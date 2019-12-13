@@ -21,83 +21,15 @@ client = Client(
     environment='production',
 )
 
-# # Get an instance of the Square API you want call
-# api_locations = client.locations
-
-# # Call list_locations method to get all locations in this Square account
-# locations = result = api_locations.list_locations()
-# # Call the success method to see if the call succeeded
-# if result.is_success():
-#     # The body property is a list of locations
-#     locations = result.body['locations']
-#     # Iterate over the list
-#     for location in locations:
-#         # Each location is represented as a dictionary
-#         for key, value in location.items():
-#             print(f"{key} : {value}")
-#         print("\n")
-# # Call the error method to see if the call failed
-# elif result.is_error():
-#     print('Error calling LocationsApi.listlocations')
-#     errors = result.errors
-#     # An error is returned as a list of errors
-#     for error in errors:
-#         # Each error is represented as a dictionary
-#         for key, value in error.items():
-#             print(f"{key} : {value}")
-#         print("\n")
-
-# api_catalog = client.catalog
-
-# catagories = result = api_catalog.list_catalog(types="CATEGORY")
-# print([i['category_data']['name'] for i in result.body['objects']])
-
-CATEGORY_TARGET="Foolscap 2020"
-
-result = client.catalog.search_catalog_objects(
-    body = {
-        "object_types": [
-                         "CATEGORY"
-        ],
-        "query": {
-            "prefix_query": {
-                "attribute_name": "name",
-                "attribute_prefix": CATEGORY_TARGET
-            }
-        },
-        "limit": 100
-    }
-)
-
-category_id = None
-if result.is_success():
-    #pprint(result.body)
-    category_id = result.body["objects"][0]["id"]
-elif result.is_error():
-    print(result.errors)
-
-# result = client.catalog.search_catalog_objects(
-#     body = {
-#         "object_types": [
-#                          "ITEM"
-#         ],
-#         "query": {
-#             "prefix_query": {
-#                 "attribute_name": "category_id",
-#                 "attribute_prefix": category_id
-#             }
-#         },
-#         "limit": 100
-#     }
-# )
-# if result.is_success():
-#     print(result.body)
-# elif result.is_error():
-#     print(result.errors)
 
 membership_item_id = set()
 locations = None
 
+FOOLSCAP = "2020"
+FOOLSCAP_MEMBERSHIP = "F20 Membership"
+
+#####
+# gather all variations of membership (ConCom, AtCon, ...)
 result = client.catalog.search_catalog_objects(
     body = {
         "include_related_objects": True,
@@ -107,7 +39,7 @@ result = client.catalog.search_catalog_objects(
         "query": {
             "prefix_query": {
                 "attribute_name": "name",
-                "attribute_prefix": "F20 Membership"
+                "attribute_prefix": FOOLSCAP_MEMBERSHIP
             }
         },
         "limit": 100
