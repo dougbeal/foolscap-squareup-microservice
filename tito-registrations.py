@@ -3,6 +3,7 @@ import concurrent.futures
 from pprint import pprint, pformat
 import logging
 from functools import partial
+import json
 
 import requests
 import requests_cache
@@ -139,7 +140,8 @@ async def main():
                 reg_tickets.append(ticket)
         registration['tickets'] = reg_tickets
     pprint(registrations)
-    # send forth
+    with open(__file__ + ".json", 'w') as output_file:
+        json.dump(registrations, output_file)    # send forth
         
     #combine 
 logging.basicConfig(level=logging.DEBUG)

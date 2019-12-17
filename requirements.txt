@@ -4,6 +4,7 @@ chardet==3.0.4
 decorator==4.4.1
 deprecation==2.0.7
 idna==2.8
+jsonpath-ng==1.4.3
 jsonpath-rw==1.4.0
 jsonpickle==0.9.6
 msgpack==0.6.2
@@ -13,6 +14,7 @@ pyparsing==2.4.5
 python-dateutil==2.8.1
 PyYAML==5.2
 requests==2.22.0
+requests-cache==0.5.2
 six==1.13.0
 squareup==3.20191120.0
 urllib3==1.25.7

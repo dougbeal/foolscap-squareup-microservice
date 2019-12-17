@@ -1,11 +1,15 @@
 import asyncio
 import concurrent.futures
-from pprint import pprint
+from pprint import pprint, pformat
 import logging
+import json
+
 import requests
 import requests_cache
 
-from jsonpath_rw import jsonpath, parse
+
+from jsonpath_ng.jsonpath import *
+from jsonpath_ng import parse
 
 from square.client import Client
 from yaml import load
@@ -17,7 +21,7 @@ except ImportError:
 config = None
 with open("secrets.yaml", "r") as yaml_file:
     config = load(yaml_file, Loader=Loader)
-    
+
 access_token = config['SQUARE_ACCESS_TOKEN']
 # Create an instance of the API Client
 # and initialize it with the credentials
@@ -38,8 +42,9 @@ FOOLSCAP_MEMBERSHIP = "F20 Membership"
 #####
 # gather all variations of membership (ConCom, AtCon, ...)
 async def get_membership_items():
-    membership_item_ids = set()
-    locations = []
+    log = logging.getLogger(__name__)
+    membership_item_names = {}
+    locations = set()
     result = client.catalog.search_catalog_objects(
         body = {
             "include_related_objects": True,
@@ -56,17 +61,32 @@ async def get_membership_items():
         }
     )
     if result.is_success():
-        #pprint(result.body)
-        item = result.body["objects"][0]
-        membership_item_ids.add(item["id"])
-        for variations in item['item_data']['variations']:
-            membership_item_ids.add(variations['id'])
-            membership_item_ids.add(variations['item_variation_data']['item_id'])
-        locations = item['present_at_location_ids']
+        json = result.body
+        log.debug(pformat(json))
+
+        dats = parse("objects[*]").find(json)
+        for dat in dats:
+            item_id = [f.value for f in Fields('id').find(dat.value)][0]
+            item_loc = [f.value for f in Fields('present_at_location_ids').find(dat.value)][0]
+            item_name = [f.value for f in parse('item_data.name').find(dat.value)][0]
+            log.debug("%s %s %s", item_id, item_loc, item_name)
+            membership_item_names[item_id] = item_name
+            locations.update(item_loc)
+
+            vdats = parse('item_data.variations[*]').find(dat.value)
+            
+            for vdat in vdats:
+                item_id = [f.value for f in Fields('id').find(vdat.value)][0]
+                item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)][0]                
+                item_name = [f.value for f in parse('item_variation_data.name').find(vdat.value)][0]
+                log.debug("%s %s %s", item_id, item_loc, item_name)                
+                membership_item_names[item_id] = item_name
+                locations.update(item_loc)                
+
     elif result.is_error():
         print(result.errors)
 
-    return membership_item_ids, locations
+    return membership_item_names, locations
 
 async def get_item_orders(membership_item_ids, locations):
     result = client.orders.search_orders(
@@ -121,6 +141,8 @@ async def get_item_orders(membership_item_ids, locations):
                                     membership['customer_id'] = ""
                             membership['note'] = line_item.get('note', "")
                             membership['quantity'] = line_item['quantity']
+                            membership['item_id'] = catalog_object_id
+                            membership['item_name'] = membership_item_ids[catalog_object_id]
                             memberships.append(membership)
 
 
@@ -147,20 +169,23 @@ async def get_customer_details(customer_id):
     return None
 
 async def main():
-        membership_item_ids, locations = await get_membership_items()    
-        membership_item_ids, locations = await get_membership_items()
-        pprint( membership_item_ids )
-        memberships = await get_item_orders( membership_item_ids, locations )
-        pprint( memberships )
+    membership_item_ids, locations = await get_membership_items()
+    pprint( membership_item_ids )
+    memberships = await get_item_orders( membership_item_ids, locations )
+    pprint( memberships )
+    with open(__file__ + ".json", 'w') as output:
+        json.dump(memberships, output)
 
 logging.basicConfig(level=logging.DEBUG)
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
+try:
+    loop.run_until_complete(main())
+except:
+    import pdb, traceback
+    traceback.print_exc()
+    pdb.post_mortem()
 
 
+# TODO: export data
 # TODO: switch over to jsonpath to make json access less fragil?
-# TODO: write out json files as debugging/cache ? https://realpython.com/caching-external-api-requests/ [sqllite]
-#   https://joblib.readthedocs.io/en/latest/generated/joblib.Memory.html (conlusion - doesn't work with async)
-#   just set cache timeout and don't worry about it?
-#   webhook trigger invalidates cache?
