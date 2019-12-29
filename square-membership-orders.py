@@ -74,14 +74,14 @@ async def get_membership_items():
             locations.update(item_loc)
 
             vdats = parse('item_data.variations[*]').find(dat.value)
-            
+
             for vdat in vdats:
                 item_id = [f.value for f in Fields('id').find(vdat.value)][0]
-                item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)][0]                
+                item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)][0]
                 item_name = [f.value for f in parse('item_variation_data.name').find(vdat.value)][0]
-                log.debug("%s %s %s", item_id, item_loc, item_name)                
+                log.debug("%s %s %s", item_id, item_loc, item_name)
                 membership_item_names[item_id] = item_name
-                locations.update(item_loc)                
+                locations.update(item_loc)
 
     elif result.is_error():
         print(result.errors)
@@ -89,6 +89,7 @@ async def get_membership_items():
     return membership_item_names, locations
 
 async def get_item_orders(membership_item_ids, locations):
+    log = logging.getLogger(__name__)
     result = client.orders.search_orders(
         body = {
             "return_entries": False,
@@ -147,7 +148,7 @@ async def get_item_orders(membership_item_ids, locations):
 
 
 
-
+    log.debug(pformat(membership_orders))
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         futures = pool.map( get_customer_details, ( membership.get('customer_id', None) for membership in memberships ) )
@@ -176,7 +177,7 @@ async def main():
     with open(__file__ + ".json", 'w') as output:
         json.dump(memberships, output)
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 loop = asyncio.get_event_loop()
 try:
@@ -187,5 +188,4 @@ except:
     pdb.post_mortem()
 
 
-# TODO: export data
-# TODO: switch over to jsonpath to make json access less fragil?
+# TODO: include Bite of Foolscap info
