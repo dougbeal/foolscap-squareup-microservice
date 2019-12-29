@@ -144,7 +144,7 @@ async def main():
         json.dump(registrations, output_file)    # send forth
         
     #combine 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 loop = asyncio.get_event_loop()
 try:
