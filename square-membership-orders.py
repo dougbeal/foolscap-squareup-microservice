@@ -3,6 +3,7 @@ import concurrent.futures
 from pprint import pprint, pformat
 import logging
 import json
+from datetime import datetime
 
 import requests
 import requests_cache
@@ -38,11 +39,50 @@ client = Client(
 
 FOOLSCAP = "2020"
 FOOLSCAP_MEMBERSHIP = "F20 Membership"
+FOOLSCAP_CATEGORY = f"Foolscap {FOOLSCAP}"
+START_DATE = datetime(int(FOOLSCAP)-1, 1, 1) # tickets are sold at prev foolscap
+END_DATE = datetime(int(FOOLSCAP), 3, 1)
+
+
+async def get_foolscap_category():
+    log = logging.getLogger(__name__)
+    result = client.catalog.search_catalog_objects(
+        body = {
+            "include_related_objects": True,
+            "object_types": [
+                             "CATEGORY"
+            ],
+            "query": {
+                "exact_query": {
+                    "attribute_name": "name",
+                    "attribute_value": FOOLSCAP_CATEGORY
+                }
+            },
+            "limit": 100
+        }
+    )
+    if result.is_success():
+        return result.body
+    else:
+        log.error(result.errors)        
+        raise result.errors
+
 
 #####
 # gather all variations of membership (ConCom, AtCon, ...)
 async def get_membership_items():
     log = logging.getLogger(__name__)
+    r = await get_foolscap_category()
+    query = Fields('objects').child(Slice()).child(Fields('id'))
+    find = query.find(r)
+    log.debug(find)
+
+    category_id = find[0].value
+    
+    log.debug(f"category_id {category_id}")
+
+    if not category_id:
+        raise "no category_id"
     membership_item_names = {}
     locations = set()
     result = client.catalog.search_catalog_objects(
@@ -52,9 +92,9 @@ async def get_membership_items():
                              "ITEM"
             ],
             "query": {
-                "prefix_query": {
-                    "attribute_name": "name",
-                    "attribute_prefix": FOOLSCAP_MEMBERSHIP
+                "exact_query": {
+                    "attribute_name": "category_id",
+                    "attribute_value": category_id
                 }
             },
             "limit": 100
@@ -67,9 +107,14 @@ async def get_membership_items():
         dats = parse("objects[*]").find(json)
         for dat in dats:
             item_id = [f.value for f in Fields('id').find(dat.value)][0]
-            item_loc = [f.value for f in Fields('present_at_location_ids').find(dat.value)][0]
             item_name = [f.value for f in parse('item_data.name').find(dat.value)][0]
-            log.debug("%s %s %s", item_id, item_loc, item_name)
+            
+            item_loc = [f.value for f in Fields('present_at_location_ids').find(dat.value)]
+
+            if item_loc:
+                item_loc = item_loc[0]
+
+            log.info("%s %s loc:%s", item_id, item_name, item_loc)
             membership_item_names[item_id] = item_name
             locations.update(item_loc)
 
@@ -77,10 +122,15 @@ async def get_membership_items():
 
             for vdat in vdats:
                 item_id = [f.value for f in Fields('id').find(vdat.value)][0]
-                item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)][0]
-                item_name = [f.value for f in parse('item_variation_data.name').find(vdat.value)][0]
-                log.debug("%s %s %s", item_id, item_loc, item_name)
-                membership_item_names[item_id] = item_name
+                var_item_name = [f.value for f in parse('item_variation_data.name').find(vdat.value)][0]
+                
+                item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)]
+                if item_loc:
+                    item_loc = item_loc[0]                
+
+                composit_name = f"{item_name} - {var_item_name}"
+                log.info("%s %s loc:%s", item_id, composit_name, item_loc)
+                membership_item_names[item_id] = composit_name
                 locations.update(item_loc)
 
     elif result.is_error():
@@ -90,6 +140,7 @@ async def get_membership_items():
 
 async def get_item_orders(membership_item_ids, locations):
     log = logging.getLogger(__name__)
+    log.info("searching for orders in locations %s", pformat(locations))
     result = client.orders.search_orders(
         body = {
             "return_entries": False,
@@ -99,8 +150,8 @@ async def get_item_orders(membership_item_ids, locations):
                 "filter": {
                     "date_time_filter": {
                         "closed_at": {
-                            "start_at": "2018-03-03T20:00:00+00:00",
-                            "end_at": "2019-03-04T21:54:45+00:00"
+                            "start_at": START_DATE.isoformat(),
+                            "end_at": END_DATE.isoformat()
                         }
                     },
                     "state_filter": {
@@ -121,7 +172,7 @@ async def get_item_orders(membership_item_ids, locations):
     membership_items = []
     memberships = []
     if result.is_success():
-        #pprint(result.body)
+        log.debug("orders: " + pformat(result.body))
         for order in result.body['orders']:
             #pprint(order)
             if 'line_items' in order:
@@ -170,14 +221,15 @@ async def get_customer_details(customer_id):
     return None
 
 async def main():
+    log = logging.getLogger(__name__)    
     membership_item_ids, locations = await get_membership_items()
-    pprint( membership_item_ids )
+    log.debug(pformat( membership_item_ids ))
     memberships = await get_item_orders( membership_item_ids, locations )
-    pprint( memberships )
+    log.debug(pformat( memberships ))
     with open(__file__ + ".json", 'w') as output:
         json.dump(memberships, output)
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 
 loop = asyncio.get_event_loop()
 try:
@@ -188,4 +240,4 @@ except:
     pdb.post_mortem()
 
 
-# TODO: include Bite of Foolscap info
+
