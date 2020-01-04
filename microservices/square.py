@@ -10,8 +10,9 @@ import requests
 import requests_cache
 
 
-from jsonpath_ng.jsonpath import *
-from jsonpath_ng import parse
+from jsonpath_ng import jsonpath, Slice, Fields
+from jsonpath_ng.ext import parse
+#from jsonpath_ng import parse
 
 from square.client import Client
 from yaml import load
@@ -24,8 +25,8 @@ config = None
 with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_file:
     config = load(yaml_file, Loader=Loader)
 
-access_token = config['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN']
-
+ACCESS_TOKEN = config['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN']
+SQUARE_WEBHOOK_TOKEN = config['metadata']['data']['square']['production']['SQUARE_WEBHOOK_TOKEN']
 # Create an instance of the API Client
 # and initialize it with the credentials
 # for the Square account whose assets you want to manage
@@ -33,7 +34,7 @@ access_token = config['metadata']['data']['square']['production']['SQUARE_ACCESS
 requests_cache.install_cache('square', backend='sqlite', expire_after=6000)
 
 client = Client(
-    access_token=access_token,
+    access_token=ACCESS_TOKEN,
     environment='production',
 )
 
@@ -66,7 +67,7 @@ async def get_foolscap_category():
     if result.is_success():
         return result.body
     else:
-        log.error(result.errors)        
+        log.error(result.errors)
         raise result.errors
 
 
@@ -80,7 +81,7 @@ async def get_membership_items():
     log.debug(find)
 
     category_id = find[0].value
-    
+
     log.debug(f"category_id {category_id}")
 
     if not category_id:
@@ -110,7 +111,7 @@ async def get_membership_items():
         for dat in dats:
             item_id = [f.value for f in Fields('id').find(dat.value)][0]
             item_name = [f.value for f in parse('item_data.name').find(dat.value)][0]
-            
+
             item_loc = [f.value for f in Fields('present_at_location_ids').find(dat.value)]
 
             if item_loc:
@@ -125,10 +126,10 @@ async def get_membership_items():
             for vdat in vdats:
                 item_id = [f.value for f in Fields('id').find(vdat.value)][0]
                 var_item_name = [f.value for f in parse('item_variation_data.name').find(vdat.value)][0]
-                
+
                 item_loc = [f.value for f in Fields('present_at_location_ids').find(vdat.value)]
                 if item_loc:
-                    item_loc = item_loc[0]                
+                    item_loc = item_loc[0]
 
                 composit_name = f"{item_name} - {var_item_name}"
                 log.info("%s %s loc:%s", item_id, composit_name, item_loc)
@@ -178,8 +179,8 @@ async def get_membership_orders(membership_item_ids, locations):
             order_id = order['id']
             membership = {}
             if 'line_items' in order:
-                membership_items = []            
-                membership['order_id'] = order_id                
+                membership_items = []
+                membership['order_id'] = order_id
                 membership['line_items'] = membership_items
                 membership['closed_at'] = order['closed_at']
                 for line_item in order['line_items']:
@@ -227,7 +228,7 @@ async def get_customer_details(customer_id):
     return None
 
 async def get_registrations():
-    log = logging.getLogger(__name__)    
+    log = logging.getLogger(__name__)
     membership_item_ids, locations = await get_membership_items()
     log.debug(pformat( membership_item_ids ))
     memberships = await get_membership_orders( membership_item_ids, locations )
@@ -235,11 +236,50 @@ async def get_registrations():
     with open(__file__ + ".json", 'w') as output:
         json.dump(memberships, output)
 
-        
-logging.basicConfig(level=logging.INFO)
 
+async def get_locations():
+    log = logging.getLogger(__name__)
+    result = client.locations.list_locations()
+
+    if result.is_success():
+        log.debug(result)
+        return result.body
+    else:
+        log.error(result.errors)    
+
+async def set_webhook():
+    log = logging.getLogger(__name__)
+    log.debug("set_webhook")
+    json = await get_locations()
+    #f = Filter(Expression('status', '!=', "INACTIVE"))
+    #log.debug(repr(f))
+    #query = Fields('locations').child(Slice())
+    query = parse("$..locations[?(@.status='ACTIVE')]", debug=True)
+    match = query.find(json)
+    log.debug("match " + pformat(match[0].value))
+
+    location_ids = [m.value['id'] for m in match]
+    log.debug("location ids " + pformat(location_ids))
+
+    # ASSUMPTION: only one active location id
+    
+    url = f"https://connect.squareup.com/v1/{location_ids[0]}/webhooks"
+    headers = {
+        "Authorization": f"Bearer {SQUARE_WEBHOOK_TOKEN}",
+        "Content-Type": "application/json"        
+    }
+    r = requests.put(url,
+                     headers = headers,
+                     data = '["PAYMENT_UPDATED", "INVENTORY_UPDATED"]'
+                     )
+    if r.status_code == 404 or r.status_code == 422:
+        log.error(f"{r.status_code}: {r.request.url}, {r.request.headers}, {r.request.body}, {r} {r.text}")
+    r.raise_for_status()
+
+    json = r.json()
+    log.debug(pformat(json))
 
 
 
 # TODO, want to create 1 registation per purchase, to make managing easier, and the note seems to be associated with first item
-#   can do it here or in sync    
+#   can do it here or in sync

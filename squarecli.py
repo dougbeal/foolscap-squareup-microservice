@@ -6,8 +6,15 @@ import microservices.square
 
 
 
-def run_set_webhooks(level=logging.WARNING):
+def set_webhook(level=logging.WARNING):
     logging.basicConfig(level=level)
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(microservices.square.set_webhook())
+    except:
+        import pdb, traceback
+        traceback.print_exc()
+        pdb.post_mortem()    
     
 def run_get_registrations(level=logging.WARNING):
     logging.basicConfig(level=level)

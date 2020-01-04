@@ -1,18 +1,18 @@
+from dateutil.parser import isoparse
+from functools import partial
+from jsonpath_rw import parse
+from jsonpath_rw.jsonpath import *
+from os import path
+from pprint import pprint, pformat
 import asyncio
 import concurrent.futures
-from pprint import pprint, pformat
-import logging
-from functools import partial
 import json
-from  os import path
-
+import logging
 import requests
 import requests_cache
 
-from jsonpath_rw.jsonpath import *
-from jsonpath_rw import parse
-
 from yaml import load
+
 try:
     from yaml import CLoader as Loader
 except ImportError:
@@ -24,7 +24,7 @@ with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_
 
 
 ACCESS_TOKEN = config['metadata']['data']['tito']['production']['TITO_SECRET']
-
+CREATE_ACCESS_TOKEN = config['metadata']['data']['tito']['test']['TITO_SECRET']
 
 requests_cache.install_cache('tito', backend='sqlite', expire_after=300)
 
@@ -36,16 +36,20 @@ FOOLSCAP_MEMBERSHIP = "F20 Membership"
 ACCOUNT_SLUG = "foolscap"
 EVENT_SLUG = f"foolscap-{CONVENTION_YEAR}"
 
-APIHOST = "https://api.tito.io/"
+APIHOST = "https://api.tito.io"
 APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
+
+BASE_HEADERS = {
+    "Authorization": f"Token token={ACCESS_TOKEN}",
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+    }
 
 async def get_tito_generic(name):
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
-    headers = {
-        "Authorization": f"Token token={ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS
     r = requests.get(url, headers=headers)
 
     if hasattr(r, 'from_cache'):
@@ -63,9 +67,7 @@ async def get_tito_generic(name):
 
 async def get_registrations():
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = {
-        "Authorization": f"Token token={ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS
     r = requests.get(url, headers=headers)
 
     json = r.json()
@@ -81,18 +83,14 @@ async def get_registrations():
 
 async def get_tickets():
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/tickets"
-    headers = {
-        "Authorization": f"Token token={ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS
     r = requests.get(url, headers=headers)
     return r.json()
 
 async def get_questions():
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions"
-    headers = {
-        "Authorization": f"Token token={ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS
     r = requests.get(url, headers=headers)
     json = r.json()
     log.debug(pformat(json))
@@ -121,9 +119,7 @@ async def get_questions():
 
 async def get_answers(question_slug):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions/{question_slug}/answers"
-    headers = {
-        "Authorization": f"Token token={ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS
     r = requests.get(url, headers=headers)
     return r.json()
 
@@ -153,25 +149,24 @@ async def get_registrations():
 async def create_tito_registration(data):
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = {
-        "Authorization": f"Token token={CREATE_ACCESS_TOKEN}"
-        }
+    headers = BASE_HEADERS.copy()
+    headers["Authorization"] = f"Token token={CREATE_ACCESS_TOKEN}"
+
     r = requests.post(url,
                       headers = headers,
-                      data = data
+                      json = data
                       )
     if r.status_code == 404 or r.status_code == 422:
         log.error(f"{r.status_code}: {url}, {headers}, {data}, {r} {r.text}")
+        log.error(pformat(locals()))
     r.raise_for_status()
 
     json = r.json()
     log.debug(pformat(json))
 
     query = Root().child(Fields('registration'))
-    find = questions_query.find(json)[0]
-    log.debug(pformat(questions_find))
-    questions = questions_find.value
-    log.debug(pformat(questions))
+    find = query.find(json)[0]
+    log.debug(pformat(find))
 
     return r.json()
 
@@ -205,7 +200,8 @@ SQUARE_TITO_MAP = {
 
 async def sync():
     log = logging.getLogger(__name__)
-    json_files = ['square-membership-orders.py.json', 'tito-registrations.py.json']
+    json_files = [path.join( path.dirname(__file__), "square.py.json"),
+                  __file__ + ".json"]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(aread_json, json_files)
@@ -304,5 +300,6 @@ async def sync():
 
 
 
-# TODO: export data
+
 # TODO: add paging for > 100 items
+# TODO: webhook for new registations -> number memberships    
