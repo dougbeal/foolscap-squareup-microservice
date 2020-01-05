@@ -1,7 +1,7 @@
 #!/bin/bash
 source bin/activate
-python squarecli.py run_get_registrations
-python titocli.py run_get_registrations
+python -m microservices.square.main get_registrations
+python -m microservices.tito.main get_registrations
 find . -name \*.py.json -depth 2 -exec python3 -m json.tool {} {}.pp.json \;
-python titocli.py run_sync
+python -m microservices.tito.main sync
 

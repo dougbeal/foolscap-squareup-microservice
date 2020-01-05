@@ -1,3 +1,7 @@
+# setup
+- create venv
+- 
+
 # Google Cloud 
 ## setup
 - https://cloud.google.com/functions/docs/quickstart 

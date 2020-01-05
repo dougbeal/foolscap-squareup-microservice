@@ -4,45 +4,13 @@ from pprint import pprint, pformat
 import logging
 import json
 from datetime import datetime
-from  os import path
 
-import requests
 
 
 
 from jsonpath_ng import jsonpath, Slice, Fields
 from jsonpath_ng.ext import parse
-#from jsonpath_ng import parse
-
-from square.client import Client
-
-config = None
-ACCESS_TOKEN = None
-SQUARE_WEBHOOK_TOKEN = None
-if __name__ == '__main__':
-    import requests_cache    
-    from yaml import load
-    try:
-        from yaml import CLoader as Loader
-    except ImportError:
-        from yaml import Loader
-    with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_file:
-        config = load(yaml_file, Loader=Loader)
-    ACCESS_TOKEN = config['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN']
-    SQUARE_WEBHOOK_TOKEN = config['metadata']['data']['square']['production']['SQUARE_WEBHOOK_TOKEN']
-
-    # Create an instance of the API Client
-    # and initialize it with the credentials
-    # for the Square account whose assets you want to manage
-
-    requests_cache.install_cache('square', backend='sqlite', expire_after=6000)
-
-    
-client = Client(
-    access_token=ACCESS_TOKEN,
-    environment='production',
-)
-
+import requests
 
 
 FOOLSCAP = "2020"
@@ -52,7 +20,7 @@ START_DATE = datetime(int(FOOLSCAP)-1, 1, 1) # tickets are sold at prev foolscap
 END_DATE = datetime(int(FOOLSCAP), 3, 1)
 
 
-async def get_foolscap_category():
+async def get_foolscap_category(secrets, client):
     log = logging.getLogger(__name__)
     result = client.catalog.search_catalog_objects(
         body = {
@@ -78,9 +46,9 @@ async def get_foolscap_category():
 
 #####
 # gather all variations of membership (ConCom, AtCon, ...)
-async def get_membership_items():
+async def get_membership_items(secrets, client):
     log = logging.getLogger(__name__)
-    r = await get_foolscap_category()
+    r = await get_foolscap_category(secrets, client)
     query = Fields('objects').child(Slice()).child(Fields('id'))
     find = query.find(r)
     log.debug(find)
@@ -146,7 +114,7 @@ async def get_membership_items():
 
     return membership_item_names, locations
 
-async def get_membership_orders(membership_item_ids, locations):
+async def get_membership_orders(secrets, client, membership_item_ids, locations):
     log = logging.getLogger(__name__)
     log.info("searching for orders in locations %s", pformat(locations))
     result = client.orders.search_orders(
@@ -214,13 +182,13 @@ async def get_membership_orders(membership_item_ids, locations):
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         orders = membership_orders.values()
-        futures = pool.map( get_customer_details, ( membership.get('customer_id', None) for membership in orders ) )
+        futures = pool.map( get_customer_details, (secrets for membership in orders), (client for membership in orders), ( membership.get('customer_id', None) for membership in orders ) )
         for membership, customer_details in list(zip(orders, await asyncio.gather(*futures))):
             membership['customer'] = customer_details
     return membership_orders
 
 
-async def get_customer_details(customer_id):
+async def get_customer_details(secrets, client, customer_id):
     if customer_id:
         result = client.customers.retrieve_customer(
             customer_id = customer_id
@@ -232,17 +200,17 @@ async def get_customer_details(customer_id):
             return None
     return None
 
-async def get_registrations():
+async def get_registrations(secrets, client):
     log = logging.getLogger(__name__)
-    membership_item_ids, locations = await get_membership_items()
+    membership_item_ids, locations = await get_membership_items(secrets, client)
     log.debug(pformat( membership_item_ids ))
-    memberships = await get_membership_orders( membership_item_ids, locations )
+    memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
     log.debug(pformat( memberships ))
     with open(__file__ + ".json", 'w') as output:
         json.dump(memberships, output)
 
 
-async def get_locations():
+async def get_locations(secrets, client):
     log = logging.getLogger(__name__)
     result = client.locations.list_locations()
 
@@ -252,10 +220,10 @@ async def get_locations():
     else:
         log.error(result.errors)    
 
-async def set_webhook():
+async def set_webhook(secrets, client):
     log = logging.getLogger(__name__)
     log.debug("set_webhook")
-    json = await get_locations()
+    json = await get_locations(secrets, client)
     #f = Filter(Expression('status', '!=', "INACTIVE"))
     #log.debug(repr(f))
     #query = Fields('locations').child(Slice())
@@ -270,7 +238,7 @@ async def set_webhook():
     
     url = f"https://connect.squareup.com/v1/{location_ids[0]}/webhooks"
     headers = {
-        "Authorization": f"Bearer {SQUARE_WEBHOOK_TOKEN}",
+        "Authorization": f"Bearer {secrets['metadata']['data']['square']['production']['SQUARE_WEBHOOK_TOKEN']}",
         "Content-Type": "application/json"        
     }
     r = requests.put(url,
@@ -286,5 +254,3 @@ async def set_webhook():
 
 
 
-# TODO, want to create 1 registation per purchase, to make managing easier, and the note seems to be associated with first item
-#   can do it here or in sync
