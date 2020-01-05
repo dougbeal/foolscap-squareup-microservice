@@ -138,7 +138,7 @@ async def get_membership_items():
 
     return membership_item_names, locations
 
-async def get_item_orders(membership_item_ids, locations):
+async def get_membership_orders(membership_item_ids, locations):
     log = logging.getLogger(__name__)
     log.info("searching for orders in locations %s", pformat(locations))
     result = client.orders.search_orders(
@@ -168,44 +168,48 @@ async def get_item_orders(membership_item_ids, locations):
         }
     )
 
-    membership_orders = []
-    membership_items = []
-    memberships = []
+    membership_orders = {}
+
     if result.is_success():
         log.debug("orders: " + pformat(result.body))
         for order in result.body['orders']:
-            #pprint(order)
+            order_id = order['id']
+            membership = {}
             if 'line_items' in order:
-                #pprint(order)
+                membership_items = []            
+                membership['order_id'] = order_id                
+                membership['line_items'] = membership_items
+                membership['closed_at'] = order['closed_at']
                 for line_item in order['line_items']:
                     if 'catalog_object_id' in line_item:
                         catalog_object_id = line_item['catalog_object_id']
                         if catalog_object_id in membership_item_ids :
-                            membership_orders.append(order)
+
                             membership_items.append(line_item)
-                            membership = {}
-                            membership['order_id'] = order['id']
+
                             if 'tenders' in order:
                                 tender = order['tenders'][0]
                                 if 'customer_id' in tender:
                                     membership['customer_id'] = tender['customer_id']
                                 else:
                                     membership['customer_id'] = ""
-                            membership['note'] = line_item.get('note', "")
-                            membership['quantity'] = line_item['quantity']
-                            membership['item_id'] = catalog_object_id
-                            membership['item_name'] = membership_item_ids[catalog_object_id]
-                            memberships.append(membership)
+                            membership['note'] = membership.get('note', "") + line_item.get('note', "")
+                            #membership['quantity'] = line_item['quantity']
+                            #membership['item_id'] = catalog_object_id
+                            #membership['item_name'] = membership_item_ids[catalog_object_id]
+                if membership_items:
+                    membership_orders[order_id] = membership
 
 
 
     log.debug(pformat(membership_orders))
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        futures = pool.map( get_customer_details, ( membership.get('customer_id', None) for membership in memberships ) )
-        for membership, customer_details in list(zip(memberships, await asyncio.gather(*futures))):
+        orders = membership_orders.values()
+        futures = pool.map( get_customer_details, ( membership.get('customer_id', None) for membership in orders ) )
+        for membership, customer_details in list(zip(orders, await asyncio.gather(*futures))):
             membership['customer'] = customer_details
-    return memberships
+    return membership_orders
 
 
 async def get_customer_details(customer_id):
@@ -224,7 +228,7 @@ async def main():
     log = logging.getLogger(__name__)    
     membership_item_ids, locations = await get_membership_items()
     log.debug(pformat( membership_item_ids ))
-    memberships = await get_item_orders( membership_item_ids, locations )
+    memberships = await get_membership_orders( membership_item_ids, locations )
     log.debug(pformat( memberships ))
     with open(__file__ + ".json", 'w') as output:
         json.dump(memberships, output)
@@ -241,3 +245,5 @@ except:
 
 
 
+# TODO, want to create 1 registation per purchase, to make managing easier, and the note seems to be associated with first item
+#   can do it here or in sync    

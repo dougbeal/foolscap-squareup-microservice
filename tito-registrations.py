@@ -45,10 +45,14 @@ async def get_tito_generic(name):
         }
     r = requests.get(url, headers=headers)
 
+    if hasattr(r, 'from_cache'):
+        if r.from_cache:
+            log.info(f"request for {url} read from cache")
+        
     json = r.json()
     log.debug(pformat(json))
 
-    query = Root().child(Fields(name))
+    query = Root().child(Fields(name, 'data'))
     find = query.find(json)[0]
     value = find.value
     log.debug(pformat(value))
@@ -139,7 +143,7 @@ async def main():
                             ticket[slug] = answer['response']
                 reg_tickets.append(ticket)
         registration['tickets'] = reg_tickets
-    pprint(registrations)
+    log.debug(pformat(registrations))
     with open(__file__ + ".json", 'w') as output_file:
         json.dump(registrations, output_file)    # send forth
         
