@@ -1,4 +1,5 @@
 from  os import path
+import os
 
 from square.client import Client
 import requests_cache    
@@ -8,8 +9,12 @@ try:
 except ImportError:
     from yaml import Loader
 
-secrets = None    
-with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_file:
+secrets = None
+
+def get_data_path():
+    return os.path.dirname(__file__)
+
+with open(path.join(get_data_path(), "..", "secrets.yaml"), "r") as yaml_file:
     secrets = load(yaml_file, Loader=Loader)
     
 
@@ -19,9 +24,15 @@ with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_
 # and initialize it with the credentials
 # for the Square account whose assets you want to manage
 
-requests_cache.install_cache('square', backend='sqlite', expire_after=6000)
+requests_cache.install_cache('development-cache', backend='sqlite', expire_after=6000)
 
 SQUARE_CLIENT = Client(
     access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],
     environment='production',
 )
+
+
+
+async def source_json(source):
+    with open(source, 'r') as f:
+        return json.load(f)

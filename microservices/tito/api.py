@@ -1,32 +1,20 @@
-from dateutil.parser import isoparse
 from functools import partial
-from jsonpath_rw import parse
-from jsonpath_rw.jsonpath import *
 from os import path
 from pprint import pprint, pformat
 import asyncio
 import concurrent.futures
 import json
 import logging
+
+from dateutil.parser import isoparse
+from jsonpath_ng import jsonpath, Slice, Fields, Root
+from jsonpath_ng.ext import parse
 import requests
 import requests_cache
 
-from yaml import load
-
-try:
-    from yaml import CLoader as Loader
-except ImportError:
-    from yaml import Loader
-
-config = None
-with open(path.join(path.dirname(__file__), "..", "secrets.yaml"), "r") as yaml_file:
-    config = load(yaml_file, Loader=Loader)
+from .. import storage 
 
 
-ACCESS_TOKEN = config['metadata']['data']['tito']['production']['TITO_SECRET']
-CREATE_ACCESS_TOKEN = config['metadata']['data']['tito']['test']['TITO_SECRET']
-
-requests_cache.install_cache('tito', backend='sqlite', expire_after=300)
 
 
 CONVENTION_YEAR = "2020"
@@ -40,16 +28,26 @@ APIHOST = "https://api.tito.io"
 APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
 
-BASE_HEADERS = {
-    "Authorization": f"Token token={ACCESS_TOKEN}",
-    "Accept": "application/json",
-    "Content-Type": "application/json"
-    }
+def get_base_headers(secrets):
+    access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
 
-async def get_tito_generic(name):
+    return {
+        "Authorization": f"Token token={access_token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+        }
+
+def get_write_headers(secrets):
+    base = get_base_headers(secrets)
+    create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
+    base["Authorization"] = f"Token token={create_access_token}"
+    return base
+
+
+async def get_tito_generic(secrets, name):
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
-    headers = BASE_HEADERS
+    headers = get_base_headers(secrets)
     r = requests.get(url, headers=headers)
 
     if hasattr(r, 'from_cache'):
@@ -65,9 +63,9 @@ async def get_tito_generic(name):
     log.debug(pformat(value))
     return value
 
-async def get_registrations():
+async def get_registrations(secrets):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = BASE_HEADERS
+    headers = get_base_headers(secrets)
     r = requests.get(url, headers=headers)
 
     json = r.json()
@@ -81,16 +79,16 @@ async def get_registrations():
 
     return r.json()
 
-async def get_tickets():
+async def get_tickets(secrets):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/tickets"
-    headers = BASE_HEADERS
+    headers = get_base_headers(secrets)
     r = requests.get(url, headers=headers)
     return r.json()
 
-async def get_questions():
+async def get_questions(secrets):
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions"
-    headers = BASE_HEADERS
+    headers = get_base_headers(secrets)
     r = requests.get(url, headers=headers)
     json = r.json()
     log.debug(pformat(json))
@@ -109,7 +107,7 @@ async def get_questions():
     log.debug(pformat(question_slugs))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        futures = pool.map(get_answers, question_slugs)
+        futures = pool.map(get_answers, ( secrets for _ in question_slugs), question_slugs)
     for question, answer in list(zip(questions, await asyncio.gather(*futures))):
         question['answers'] = answer['answers']
 
@@ -117,15 +115,15 @@ async def get_questions():
     return questions
 
 
-async def get_answers(question_slug):
+async def get_answers(secrets, question_slug):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions/{question_slug}/answers"
-    headers = BASE_HEADERS
+    headers = get_base_headers(secrets)
     r = requests.get(url, headers=headers)
     return r.json()
 
-async def get_registrations():
+async def get_registrations(secrets):
     log = logging.getLogger(__name__)
-    registrations, tickets, questions = await asyncio.gather( *map(asyncio.create_task, [get_tito_generic('registrations'), get_tito_generic('tickets'), get_questions()]) )
+    registrations, tickets, questions = await asyncio.gather( *map(asyncio.create_task, [get_tito_generic(secrets, 'registrations'), get_tito_generic(secrets, 'tickets'), get_questions(secrets)]) )
 
     for registration in registrations:
         log.debug(pformat(registration))
@@ -143,14 +141,14 @@ async def get_registrations():
                 reg_tickets.append(ticket)
         registration['tickets'] = reg_tickets
     log.debug(pformat(registrations))
-    with open(__file__ + ".json", 'w') as output_file:
-        json.dump(registrations, output_file)    # send forth
+    await storage.get_storage().write(__file__ + ".json", {'registrations': registrations})
 
-async def create_tito_registration(data):
+
+async def create_tito_registration(secrets, data):
     log = logging.getLogger(__name__)
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = BASE_HEADERS.copy()
-    headers["Authorization"] = f"Token token={CREATE_ACCESS_TOKEN}"
+    headers = get_write_headers(secrets)
+
 
     r = requests.post(url,
                       headers = headers,
@@ -169,10 +167,6 @@ async def create_tito_registration(data):
     log.debug(pformat(find))
 
     return r.json()
-
-async def aread_json(source):
-    with open(source, 'r') as f:
-        return json.load(f)
 
 # updated 2019-12-29
 # INFO:__main__:tito releases: [
@@ -198,20 +192,22 @@ SQUARE_TITO_MAP = {
     'F20 Membership - At con': 'Foolscap 2020 Membership'
     }
 
-async def sync():
+async def sync(secrets):
     log = logging.getLogger(__name__)
-    json_files = [path.join( path.dirname(__file__), "square.py.json"),
+    json_files = [__file__.replace('tito', 'square') + '.json',
                   __file__ + ".json"]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(aread_json, json_files)
-    square, tito, releases = await asyncio.gather( *futures, get_tito_generic('releases') )
+        futures = pool.map(storage.get_storage().read, json_files)
+    square_document, tito_document, releases = await asyncio.gather( *futures, get_tito_generic(secrets, 'releases') )
 
+    tito = tito_document.to_dict().get('registrations')
     # square order_id is used as the source in tito to prevent duplicates
     query = Slice().child(Fields('source'))
     find = query.find(tito)
-    tito_sources = set([m.value for m in find])
+    tito_sources = {m.value for m in find}
 
+    square = square_document.to_dict().get('registrations')
     log.info( "square fields " + pformat(list(square.items())[0]))
     log.info( "tito fields " + pformat(tito[0]))
     log.info( "tito releases fields " + pformat(releases[0]))
@@ -261,7 +257,7 @@ async def sync():
                 'quantity': quantity
                 }
             tito['line_items'].append(item)
-            for _ in xrange(int(quantity)):
+            for _ in range(int(quantity)):
                 items.append(tito_name)
         if not tito['name']:
             tito['name'] = note.replace('\n', ' ')
@@ -286,10 +282,10 @@ async def sync():
     log.info("square %i tito %i", len(square), len(tito))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(create_tito_registration, order_from_square_tito_add[:1])
+        futures = pool.map(create_tito_registration, [secrets], order_from_square_tito_add[:1])
 
-    r = await asyncio.gather( *futures, get_tito_generic('releases') )
-    log.info(ppformat(r))
+    r = await asyncio.gather( *futures, get_tito_generic(secrets, 'releases') )
+    log.info(pformat(r))
 
 
 
@@ -302,4 +298,4 @@ async def sync():
 
 
 # TODO: add paging for > 100 items
-# TODO: webhook for new registations -> number memberships    
+# TODO: webhook for new registations -> number memberships

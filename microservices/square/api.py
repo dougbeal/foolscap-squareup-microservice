@@ -12,6 +12,7 @@ from jsonpath_ng import jsonpath, Slice, Fields
 from jsonpath_ng.ext import parse
 import requests
 
+from .. import storage 
 
 FOOLSCAP = "2020"
 FOOLSCAP_MEMBERSHIP = "F20 Membership"
@@ -206,9 +207,7 @@ async def get_registrations(secrets, client):
     log.debug(pformat( membership_item_ids ))
     memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
     log.debug(pformat( memberships ))
-    with open(__file__ + ".json", 'w') as output:
-        json.dump(memberships, output)
-
+    await storage.get_storage().write(__file__ + ".json", {'registrations': memberships})
 
 async def get_locations(secrets, client):
     log = logging.getLogger(__name__)
