@@ -226,9 +226,7 @@ async def sync(secrets):
     order_from_square = []
     for order_id, order in square_by_date:
         items = []
-        tito = {
-                'discount_code': ''
-                }
+        tito = {'discount_code': ''}
         note = order.get('note', '')
         cust = order.get('customer', None)
         order_date = order['closed_at']
@@ -285,14 +283,14 @@ async def sync(secrets):
         futures = pool.map(create_tito_registration, [secrets], order_from_square_tito_add[:1])
 
     r = await asyncio.gather( *futures, get_tito_generic(secrets, 'releases') )
-    log.info(pformat(r))
+    log.debug(pformat(r))
 
 
 
     query = Slice().child(Fields('item_name'))
-    find = query.find(square)
-    log.info("square items: " + pformat(set([m.value for m in find])))
-    log.info("tito releases: " + pformat(tito_release_title_id))
+    find = query.find(order_from_square)
+    log.info("square items: %s", pformat({m.value for m in find}))
+    log.info("tito releases: %s", pformat(tito_release_title_id))
 
 
 
