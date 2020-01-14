@@ -29,7 +29,7 @@ APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
 
 def get_base_headers(secrets):
-    access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
+    access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
 
     return {
         "Authorization": f"Token token={access_token}",
@@ -39,7 +39,7 @@ def get_base_headers(secrets):
 
 def get_write_headers(secrets):
     base = get_base_headers(secrets)
-    create_access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
+    create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
     base["Authorization"] = f"Token token={create_access_token}"
     return base
 

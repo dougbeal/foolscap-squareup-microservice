@@ -1,8 +1,29 @@
+#!/usr/bin/env mdsh
 # setup, local development
-- create venv
+```
+brew install python3 
+python3 -m venv .  # create virtual environment
+source bin/activate
+pip install -r requirements_dev.txt
+```
+- https://cloud.google.com/sdk/install
+- https://cloud.google.com/sdk/docs/downloads-interactive
 - https://firebase.google.com/docs/functions/local-emulator
+
+```
+glcoud init
+# select foolscap-microservices project (account dougbeal)
+gcloud components install beta
+# need java runtime fore firestore emulator
+brew cask install java 
+```
+
+# running local enviornemnt
+```
+gcloud beta emulators firestore start --host-port localhost:8582
+```
 ## firebase emulation
-- gcloud beta emulators firestore start
+- 
 
 
 # Google Cloud
