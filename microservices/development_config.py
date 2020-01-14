@@ -24,7 +24,7 @@ with open(path.join(get_data_path(), "..", "secrets.yaml"), "r") as yaml_file:
 # and initialize it with the credentials
 # for the Square account whose assets you want to manage
 
-requests_cache.install_cache('development-cache', backend='sqlite', expire_after=6000)
+#requests_cache.install_cache('development-cache', backend='sqlite', expire_after=6000)
 
 SQUARE_CLIENT = Client(
     access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],

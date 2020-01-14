@@ -1,9 +1,6 @@
-from functools import partial
-from os import path
-from pprint import pprint, pformat
+from pprint import pformat
 import asyncio
 import concurrent.futures
-import json
 import logging
 
 from dateutil.parser import isoparse
@@ -29,6 +26,7 @@ APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
 
 def get_base_headers(secrets):
+    #access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
     access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
 
     return {
@@ -39,80 +37,66 @@ def get_base_headers(secrets):
 
 def get_write_headers(secrets):
     base = get_base_headers(secrets)
+    #create_access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
     create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
     base["Authorization"] = f"Token token={create_access_token}"
     return base
 
 
-async def get_tito_generic(secrets, name):
+def log_request(response):
     log = logging.getLogger(__name__)
+    cache = ""
+    if hasattr(response, 'from_cache'):
+        if response.from_cache:
+            cache = '[CACHE]'
+    if response.status_code == 404 or response.status_code == 422:
+        log.error("%s: %s %s %s\n\t"
+                  "headers %s\n\t"
+                  "json %s\n\t"
+                  "resp %s\n\t"
+                  "resp.headers %s\n\t"
+                  "resp.text %s",
+                  response.status_code, cache, response.request.method, response.request.url,
+                  response.request.headers,
+                  response.request.body,
+                  response,
+                  response.headers,
+                  response.text
+                  )
+        log.error("locals %s", pformat(locals()))
+    else:
+        log.info("%s: %s %s %s\n\t",
+                 response.status_code, cache, response.request.method, response.request.url)
+        log.debug("headers %s\n\t"
+                  "json %s\n\t"
+                  "resp %s\n\t"
+                  "resp.headers %s\n\t"
+                  "resp.text %s",
+
+                  response.request.headers,
+                  response.request.body,
+                  response,
+                  response.headers,
+                  response.text
+                  )
+
+
+async def get_tito_generic(secrets, name, params={}):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
     headers = get_base_headers(secrets)
-    r = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, params=params)
+    log_request(resp)
+    json_result = resp.json()
+    return json_result
 
-    if hasattr(r, 'from_cache'):
-        if r.from_cache:
-            log.info(f"request for {url} read from cache")
-
-    json_result = r.json()
-    log.debug(pformat(json_result))
-
-    query = Root().child(Fields(name, 'data'))
-    find = query.find(json_result)[0]
-    value = find.value
-    log.debug(pformat(value))
-    return value
-
-async def get_registrations(secrets):
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = get_base_headers(secrets)
-    r = requests.get(url, headers=headers)
-
-    json_result = r.json()
-    log.debug(pformat(json_result))
-
-    query = Root().child(Fields('registrations'))
-    find = questions_query.find(json_result)[0]
-    log.debug(pformat(questions_find))
-    questions = questions_find.value
-    log.debug(pformat(questions))
-
-    return r.json()
-
-async def get_tickets(secrets):
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/tickets"
-    headers = get_base_headers(secrets)
-    r = requests.get(url, headers=headers)
-    return r.json()
-
-async def get_questions(secrets):
-    log = logging.getLogger(__name__)
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions"
-    headers = get_base_headers(secrets)
-    result = requests.get(url, headers=headers)
-    result_json = result.json()
-    log.debug(pformat(result_json))
-    futures = []
-
-    questions_query = Root().child(Fields('questions'))
-    questions_find = questions_query.find(result_json)[0]
-    log.debug(pformat(questions_find))
-    questions = questions_find.value
-    log.debug(pformat(questions))
-
-    # equivalent statement parse('questions[*].slug')
-    question_slugs_query = questions_query.child(Slice()).child(Fields('slug'))
-    question_slugs_find = question_slugs_query.find(result_json)
-    question_slugs = [m.value for m in question_slugs_find]
-    log.debug(pformat(question_slugs))
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        futures = pool.map(get_answers, ( secrets for _ in question_slugs), question_slugs)
-    for question, answer in list(zip(questions, await asyncio.gather(*futures))):
-        question['answers'] = answer['answers']
-
-    log.debug(pformat(questions))
-    return questions
+async def put_tito_generic(secrets, name, json, operation=requests.post):
+    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
+    headers = get_write_headers(secrets)
+    resp = operation(url, headers=headers, json=json)
+    log_request(resp)
+    resp.raise_for_status()
+    json_result = resp.json()
+    return json_result
 
 
 async def get_answers(secrets, question_slug):
@@ -122,51 +106,156 @@ async def get_answers(secrets, question_slug):
     return response.json()
 
 async def get_registrations(secrets):
-    log = logging.getLogger(__name__)
-    registrations, tickets, questions = await asyncio.gather( *map(asyncio.create_task, [get_tito_generic(secrets, 'registrations'), get_tito_generic(secrets, 'tickets'), get_questions(secrets)]) )
-
-    for registration in registrations:
-        log.debug(pformat(registration))
-        reg_tickets = []
-        for ticket in tickets:
-            log.debug(pformat(ticket))
-            ticket_id = ticket['id']
-            if registration['id'] == ticket['registration_id']:
-                for question in questions:
-                    slug = question['slug']
-                    for answer in question['answers']:
-                        log.debug(pformat(answer))
-                        if answer['ticket_id'] == ticket_id:
-                            ticket[slug] = answer['response']
-                reg_tickets.append(ticket)
-        registration['tickets'] = reg_tickets
-    log.debug(pformat(registrations))
+    registrations = await get_tito_generic(secrets, "registrations", params={ 'view': 'extended' })
     await storage.get_storage().write(__file__ + ".json", {'registrations': registrations})
 
 
-async def create_tito_registration(secrets, data):
+async def create_tito_registration(secrets, registration, square_data):
     log = logging.getLogger(__name__)
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations"
-    headers = get_write_headers(secrets)
 
+    json_result = await put_tito_generic(secrets, 'registrations', json={'registration': registration})
 
-    r = requests.post(url,
-                      headers=headers,
-                      json=data
-                      )
-    if r.status_code == 404 or r.status_code == 422:
-        log.error(f"{r.status_code}: {url}, {headers}, {data}, {r} {r.text}")
-        log.error(pformat(locals()))
-    r.raise_for_status()
-    log.info(f"{r.status_code}: url:{url}, headers:{headers}, data:{data}, r:{r} r.text{r.text}")
-    json_result = r.json()
-    log.debug(pformat(json_result))
-
-    query = Root().child(Fields('registration'))
+    query = Fields('registration')
     find = query.find(json_result)[0]
     log.debug(pformat(find))
 
-    return r.json()
+    registration_slug = find.value['slug']
+    asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
+    asyncio.create_task(update_tito_tickets(secrets, json_result, square_data))
+
+    return json_result
+
+
+async def read_registrations():
+    log = logging.getLogger(__name__)
+    json_files = [__file__ + ".json",
+                  __file__.replace('tito', 'square') + '.json']
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = pool.map(storage.get_storage().read, json_files)
+    tito_document, square_document = await asyncio.gather(*futures)
+
+    t, s = tito_document.get('registrations.registrations'), square_document.get('registrations')
+    #log.debug("tito reg %s", pformat(t))
+    #log.debug("square reg %s", pformat(s))
+    return t,s
+
+def square_registration_order_map(square_registrations):
+    return square_registrations
+
+# created registrations before confirming invice and update_tito_tickets, so this function goes back and does those
+async def complete_tito_registrations(secrets):
+    log = logging.getLogger(__name__)
+
+    tito_registrations, square_registrations = await read_registrations()
+
+    orders = square_registration_order_map(square_registrations)
+
+    for registration in tito_registrations:
+        #asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
+        #asyncio.create_task(update_tito_tickets(secrets, registration))
+        square_data = orders.get(registration.get('source', None), {})
+        asyncio.create_task(complete_tito_registration(secrets, square_data=square_data, registration=registration))
+
+# created registrations before confirming invoice and update_tito_tickets, so this function goes back and does those
+# does a single registration by slug
+async def complete_tito_registration(secrets, square_data={}, registration={}, registration_slug=""):
+    log = logging.getLogger(__name__)
+    assert registration or registration_slug, "must be supplied with registration or registration_slug"
+    # is supplied with registration slug, read data in
+    if not registration and registration_slug:
+        log.info("find tito reg slug %s", registration_slug)
+        tito_registrations, square_registrations = await read_registrations()
+        assert tito_registrations, "registrations must be loaded into storage"
+        for reg in tito_registrations:
+            if reg['slug'] == registration_slug:
+                registration = reg
+                break
+        assert registration, "invalid registration_slug, no registration found"
+        orders = square_registration_order_map(square_registrations)
+        square_data = orders.get(registration.get('source', None), {})
+
+    await asyncio.create_task(update_tito_tickets(secrets, registration, square_data))
+
+
+async def update_tito_tickets(secrets, registration, square_data, badge_number=None):
+    log = logging.getLogger(__name__)
+
+    log.debug("tito reg %s", pformat(registration))
+    log.debug("sqare dat %s", pformat(square_data))
+    query = parse('$..note')
+    match = query.find(square_data)
+    notes = [m.value for m in match if m.value]
+    log.debug("notes %s", pformat(notes))
+    # came from square, try to determine Badge Name from registration_name
+    # syntax
+    # badge-name: Badge Alpha
+    # email: alpha@foo.bar
+    # badge-name: Badge Beta
+    # email: beta@foo.bar
+    query = parse("$..tickets[*]")
+    match = query.find(registration)
+
+    for num, ticket in enumerate([m.value for m in match]):
+
+        log.debug("ticket %i %s", num, pformat(ticket))
+        ticket_slug = ticket['slug']
+
+        if not 'responses' in ticket:
+            # need to load extended ticket
+            log.debug("loading extended ticket {ticket_slug}")
+            ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}")
+        else:
+            log.debug("ticket has responses")
+
+        answers = ticket['responses']
+        update = {}
+        if registration['source']: # ticket came from square
+            if not ticket['email'] and ticket['registration_email']:
+                update['email'] = ticket['registration_email']
+            if not ticket['first_name'] and ticket['registration_name']:
+                update['first_name'] = ticket['registration_name'].split()[0]
+            if not ticket['last_name'] and ticket['registration_name']:
+                update['last_name'] = ' '.join(ticket['registration_name'].split()[1:])
+
+            if not 'badge-name' in answers:
+                badge_name = ticket.get('name', ticket['registration_name'])
+                if num:
+                    badge_name = f"{badge_name} {num}"
+                if badge_name:
+                    #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
+                    update.setdefault('answers',{}).update({ 'badge-name': badge_name })
+
+
+        if ticket['release_title'] != 'Bite of Foolscap Banquet' and not 'badge-number' in answers and badge_number:
+            #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': badge_number })
+            update.setdefault('answers', {}).update({ 'badge-number': str(badge_number) })
+
+        if bool(update):
+            update['release_id'] = ticket['release_id']
+            log.info("update ticket[%s] %s", ticket['release_title'], pformat(update))
+            #return asyncio.create_task(put_tito_generic(secrets, f"tickets/{ticket_slug}", update, operation=requests.patch))
+            return await put_tito_generic(secrets, f"tickets/{ticket_slug}", {"ticket": update}, operation=requests.patch)
+        else:
+            log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
+            return None
+
+
+
+async def mark_tito_registration_paid(secrets, registration_slug):
+    log = logging.getLogger(__name__)
+    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations/{registration_slug}/confirmations"
+    log.info(url)
+    headers = get_write_headers(secrets)
+    r = requests.post(url,
+                      headers=headers
+                      )
+    if r.status_code == 404 or r.status_code == 422:
+        log.error(f"{r.status_code}: {url}, {headers}, {r} {r.text}")
+        log.error(pformat(locals()))
+    r.raise_for_status()
+    log.info(f"{r.status_code}: url:{url}, headers:{headers}, r:{r} r.text{r.text}")
+
 
 # updated 2019-12-29
 # INFO:__main__:tito releases: [
@@ -194,41 +283,30 @@ SQUARE_TITO_MAP = {
 
 async def sync(secrets):
     log = logging.getLogger(__name__)
-    json_files = [__file__.replace('tito', 'square') + '.json',
-                  __file__ + ".json"]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(storage.get_storage().read, json_files)
-    square_document, tito_document, releases = await asyncio.gather( *futures, get_tito_generic(secrets, 'releases') )
-
-    tito_registrations = tito_document.to_dict().get('registrations')
+    get_release_task = asyncio.create_task(get_tito_generic(secrets, 'releases'))
+    tito_registrations, square_registrations = await read_registrations()
     # square order_id is used as the source in tito to prevent duplicates
     query = Slice().child(Fields('source'))
     find = query.find(tito_registrations)
     tito_sources = {m.value for m in find}
 
-    square = square_document.to_dict().get('registrations')
-    log.info( "square fields " + pformat(list(square.items())[0]))
+    log.info( "square fields " + pformat(list(square_registrations.items())[0]))
     log.info( "tito fields " + pformat(tito_registrations[0]))
-    log.info( "tito releases fields " + pformat(releases[0]))
 
-    tito_release_title_id = {}
-    for release in releases:
-        release_id = release['id']
-        release_title = release['title']
-        tito_release_title_id[release_title] = release_id
-
-
-
-    square_by_date = sorted(list(square.items()), key=lambda tup: isoparse(tup[1]['closed_at']))
+    square_by_date = sorted(list(square_registrations.items()), key=lambda tup: isoparse(tup[1]['closed_at']))
 
     order_from_square_tito_add = []
     order_from_square = []
     order_dates = {}
+    releases = {}
     for order_id, order in square_by_date:
         items = []
         tito = {'discount_code': ''}
-        note = order.get('note', '')
+
+        query = parse("$..note")
+        match = query.find(order)
+        note = [m.value for m in match]
         cust = order.get('customer', None)
         order_date = order['closed_at']
 
@@ -251,15 +329,20 @@ async def sync(secrets):
             if item_name in DEALER_MEMBERSHIP: # two badger per dealer space
                 quantity *= 2
 
+            if not releases:
+                releases = {}
+                for item in get_release_task.result()['releases']:
+                    releases[item['title']] = item['id']
+                log.info("releases %s", pformat(releases))
             item = {
-                'release_id': tito_release_title_id[tito_name],
+                'release_id': releases[tito_name],
                 'quantity': quantity
                 }
             tito['line_items'].append(item)
             for _ in range(int(quantity)):
                 items.append(tito_name)
         if not tito['name']:
-            tito['name'] = note.replace('\n', ' ')
+            tito['name'] = ' '.join(note)
 
         if not order_id in tito_sources:
             log.info(f"add to tito {tito} {order_date}")
@@ -269,6 +352,7 @@ async def sync(secrets):
 
         tito = tito.copy()
         tito['order_date'] = order_date
+        tito['note'] = note
         order_from_square.append(tito)
         order_dates[order_id] = order_date
 
@@ -279,41 +363,52 @@ async def sync(secrets):
 
 
 
-    log.info("square %i tito %i", len(square), len(tito_registrations))
+    log.info("square %i tito %i", len(square_registrations), len(tito_registrations))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(create_tito_registration,
                            [secrets for _ in order_from_square_tito_add],
-                           order_from_square_tito_add)
+                           order_from_square_tito_add,
+                           [square_registrations[item['source']] for item in order_from_square_tito_add])
 
-    results = await asyncio.gather(*futures)
+    registration_creation_results = await asyncio.gather(*futures)
 
-
-    log.info("a result: %s", pformat(results[0]))
-    log.debug("results: %s", pformat(results))
 
     # merge tito native and from square orders, sort by date made
     # sort tito by
     #  'completed_at': '2019-12-22T22:16:16.000-08:00',
     #  filter Source: None
 
-    for reg in tito_registrations:
+    for reg in [*tito_registrations, *registration_creation_results]:
         if reg.get('source') is None:
             reg['order_date'] = reg['completed_at']
         else:
-            order_date = order_dates[reg['source']]
-            reg['order_date'] = reg['completed_at']
+            reg['order_date'] = order_dates[reg['source']]
+            reg['square_data'] = square_registrations[reg['source']]
 
-    sorted_by_date = sorted([*tito_registrations, *order_from_square], key=lambda item: isoparse(item['order_date']))
+
+    sorted_by_date = sorted([*tito_registrations, *registration_creation_results], key=lambda item: isoparse(item['order_date']))
     log.info("sorted %s:", [order['name'] for order in sorted_by_date])
 
-    query = Slice().child(Fields('item_name'))
-    find = query.find(order_from_square)
-    log.info("square items: %s", pformat({m.value for m in find}))
-    log.info("tito releases: %s", pformat(tito_release_title_id))
+
+    if not releases:
+        releases = {}
+        for item in get_release_task.result()['releases']:
+            releases[item['title']] = item['id']
+        log.info("releases %s", pformat(releases))
+
+    # add badge numbers
+    badge_number = 2 # 1 is reserved
+    for registration in sorted_by_date:
+        for ticket in registration['tickets']:
+            if not ticket['release_title'] == 'Bite of Foolscap Banquet':
+                asyncio.create_task(update_tito_tickets(secrets, registration, registration.get('square_data', {}), badge_number=badge_number))
+                badge_number = badge_number + 1
 
 
 
 
 # TODO: add paging for > 100 items
 # TODO: webhook for new registations -> number memberships
+# TODO: mark regs as paid
+# TODO: fill out tickets
