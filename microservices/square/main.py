@@ -35,7 +35,20 @@ def get_registrations(level=logging.WARNING):
 if __name__ == '__main__':
     PRODUCTION = False
     import fire
+    import sys    
     from .. import development_config as config
     secrets = config.secrets
     client = config.SQUARE_CLIENT
-    fire.Fire()
+    if not '--production' in sys.argv:
+        from unittest.mock import patch
+        from unittest.mock import Mock 
+        from unittest.mock import MagicMock   
+
+        @patch('requests.post', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
+        @patch('requests.patch', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
+        def mocked_function():
+            fire.Fire()
+        mocked_function()
+    else:
+        sys.argv.remove('--production')        
+        fire.Fire()

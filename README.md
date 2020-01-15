@@ -18,9 +18,22 @@ gcloud components install beta
 brew cask install java 
 ```
 
-# running local enviornemnt
+# running local enviornemnt (assumes venv is activated)
 ```
 gcloud beta emulators firestore start --host-port localhost:8582
+```
+# run entire pipeline, with mocked requets.post and requests.patch
+```
+./run.sh
+```
+# run pipeline, send changes to tito
+``` 
+./run.sh --production
+```
+
+# run sync with DEBUG log level
+```
+python -m microservices.tito.main sync 'DEBUG'
 ```
 ## firebase emulation
 - 
@@ -140,3 +153,6 @@ OUTPUT:
      .                                  .
      ..... .. .          . ........ .....
                 ..  .. .
+
+
+TODO: rename repo to foolscap-microservices

@@ -26,8 +26,8 @@ APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
 
 def get_base_headers(secrets):
-    #access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
-    access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
+    access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
+    #access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
 
     return {
         "Authorization": f"Token token={access_token}",
@@ -37,8 +37,8 @@ def get_base_headers(secrets):
 
 def get_write_headers(secrets):
     base = get_base_headers(secrets)
-    #create_access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
-    create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
+    create_access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
+    #create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
     base["Authorization"] = f"Token token={create_access_token}"
     return base
 
@@ -92,7 +92,9 @@ async def get_tito_generic(secrets, name, params={}):
 async def put_tito_generic(secrets, name, json, operation=requests.post):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
     headers = get_write_headers(secrets)
+
     resp = operation(url, headers=headers, json=json)
+    
     log_request(resp)
     resp.raise_for_status()
     json_result = resp.json()
@@ -178,6 +180,9 @@ async def complete_tito_registration(secrets, square_data={}, registration={}, r
     await asyncio.create_task(update_tito_tickets(secrets, registration, square_data))
 
 
+def is_membership_ticket(title):
+    return not title in { 'Bite of Foolscap Banquet' }
+    
 async def update_tito_tickets(secrets, registration, square_data, badge_number=None):
     log = logging.getLogger(__name__)
 
@@ -186,7 +191,8 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     query = parse('$..note')
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
-    log.debug("notes %s", pformat(notes))
+    square_names = None
+    log.info("notes %s", pformat(notes))
     # came from square, try to determine Badge Name from registration_name
     # syntax
     # badge-name: Badge Alpha
@@ -196,9 +202,12 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     query = parse("$..tickets[*]")
     match = query.find(registration)
 
-    for num, ticket in enumerate([m.value for m in match]):
-
-        log.debug("ticket %i %s", num, pformat(ticket))
+    bite_tickets = [m.value for m in match if not is_membership_ticket(m.value['release_title'])]
+    # membership tickets
+    membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
+    log.info( "%i membership tickets, %i non-membership tickets", len(membership_tickets), len(bite_tickets))
+    for num, ticket in enumerate(membership_tickets):
+        log.debug("membership ticket ticket %i %s", num, pformat(ticket))
         ticket_slug = ticket['slug']
 
         if not 'responses' in ticket:
@@ -210,7 +219,9 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
 
         answers = ticket['responses']
         update = {}
-        if registration['source']: # ticket came from square
+
+        # ticket came from square, unpack data from square customer and note
+        if registration['source']: 
             if not ticket['email'] and ticket['registration_email']:
                 update['email'] = ticket['registration_email']
             if not ticket['first_name'] and ticket['registration_name']:
@@ -220,25 +231,43 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
 
             if not 'badge-name' in answers:
                 badge_name = ticket.get('name', ticket['registration_name'])
-                if num:
-                    badge_name = f"{badge_name} {num}"
+                if notes:
+                    if square_names is None:
+                        square_names = notes[0].split('\n')
+                    
+                    raw_badge_name = square_names.pop().split()
+                    if len(raw_badge_name) > 2:
+                        badge_name = ' '.join(raw_badge_name[0:2])
+                    else:
+                        badge_name = ' '.join(raw_badge_name)
+                    
                 if badge_name:
                     #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
                     update.setdefault('answers',{}).update({ 'badge-name': badge_name })
+            else:
+                log.info("badge-name is already %s", answers['badge-name'])
 
+        # assign badge number if not Bite and not already assigned
+        if badge_number: 
+            ticket_badge_number = badge_number+num
+            #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })
+            update.setdefault('answers', {}).update({ 'badge-number': str(ticket_badge_number) })
 
-        if ticket['release_title'] != 'Bite of Foolscap Banquet' and not 'badge-number' in answers and badge_number:
-            #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': badge_number })
-            update.setdefault('answers', {}).update({ 'badge-number': str(badge_number) })
-
+        # If anything is set in update, send changes via tito update ticket
         if bool(update):
             update['release_id'] = ticket['release_id']
-            log.info("update ticket[%s] %s", ticket['release_title'], pformat(update))
-            #return asyncio.create_task(put_tito_generic(secrets, f"tickets/{ticket_slug}", update, operation=requests.patch))
-            return await put_tito_generic(secrets, f"tickets/{ticket_slug}", {"ticket": update}, operation=requests.patch)
+            log.info("update membership ticket[%s:%s] %s", ticket_slug, ticket['release_title'], pformat(update))
+            asyncio.create_task(put_tito_generic(secrets, f"tickets/{ticket_slug}", {'ticket':update}, operation=requests.patch))
+            if len(bite_tickets):
+                update = update.copy()
+                bite = bite_tickets.pop()
+                bite_ticket_slug = bite['slug']
+                update['release_id'] = bite['release_id']                
+                log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))                
+                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {'ticket':update}, operation=requests.patch))                
         else:
             log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
-            return None
+
 
 
 
@@ -285,6 +314,7 @@ async def sync(secrets):
     log = logging.getLogger(__name__)
 
     get_release_task = asyncio.create_task(get_tito_generic(secrets, 'releases'))
+    log.info("reading registrations")
     tito_registrations, square_registrations = await read_registrations()
     # square order_id is used as the source in tito to prevent duplicates
     query = Slice().child(Fields('source'))
@@ -357,14 +387,9 @@ async def sync(secrets):
         order_dates[order_id] = order_date
 
 
-    for order in tito_registrations:
-        log.debug(order)
+    log.info("reg count square %i tito %i", len(square_registrations), len(tito_registrations))
 
-
-
-
-    log.info("square %i tito %i", len(square_registrations), len(tito_registrations))
-
+    log.info("creating %i registrations", len(order_from_square_tito_add))
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(create_tito_registration,
                            [secrets for _ in order_from_square_tito_add],
@@ -372,14 +397,15 @@ async def sync(secrets):
                            [square_registrations[item['source']] for item in order_from_square_tito_add])
 
     registration_creation_results = await asyncio.gather(*futures)
-
+    new_tito_registrations = [r['registration']for r in registration_creation_results]
 
     # merge tito native and from square orders, sort by date made
     # sort tito by
     #  'completed_at': '2019-12-22T22:16:16.000-08:00',
     #  filter Source: None
 
-    for reg in [*tito_registrations, *registration_creation_results]:
+    log.info("adding order_date for sorting")
+    for reg in [*tito_registrations, *new_tito_registrations]:
         if reg.get('source') is None:
             reg['order_date'] = reg['completed_at']
         else:
@@ -387,7 +413,7 @@ async def sync(secrets):
             reg['square_data'] = square_registrations[reg['source']]
 
 
-    sorted_by_date = sorted([*tito_registrations, *registration_creation_results], key=lambda item: isoparse(item['order_date']))
+    sorted_by_date = sorted([*tito_registrations, *new_tito_registrations], key=lambda item: isoparse(item['order_date']))
     log.info("sorted %s:", [order['name'] for order in sorted_by_date])
 
 
@@ -398,13 +424,18 @@ async def sync(secrets):
         log.info("releases %s", pformat(releases))
 
     # add badge numbers
+    log.info("adding badge numbers")        
     badge_number = 2 # 1 is reserved
+    tasks = []
     for registration in sorted_by_date:
-        for ticket in registration['tickets']:
-            if not ticket['release_title'] == 'Bite of Foolscap Banquet':
-                asyncio.create_task(update_tito_tickets(secrets, registration, registration.get('square_data', {}), badge_number=badge_number))
-                badge_number = badge_number + 1
+        membership_count = len([ 0 for ticket in registration['tickets'] if not ticket['release_title'] == 'Bite of Foolscap Banquet'])
+        tasks.append(asyncio.create_task(update_tito_tickets(secrets, registration, registration.get('square_data', {}), badge_number=badge_number)))
+        badge_number = badge_number + membership_count
 
+    # wait for everything to complete before sync is done
+    log.info("await tasks")                
+    await asyncio.gather(*tasks)
+    log.info("tasks done")                    
 
 
 

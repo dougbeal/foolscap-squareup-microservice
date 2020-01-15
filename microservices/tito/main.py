@@ -18,6 +18,7 @@ def sync(level=logging.WARNING):
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(api.sync(secrets))
+
     except:
         if not PRODUCTION:
             import pdb, traceback
@@ -72,10 +73,26 @@ def handle_exception(loop, context):
 
 
 
+
             
 if __name__ == '__main__':
     PRODUCTION = False
     import fire
+    import sys
     from .. import development_config as config
     secrets = config.secrets
-    fire.Fire()
+    if not '--production' in sys.argv:
+        print("running with mocked requests.post and requests.patch")
+        from unittest.mock import patch
+        from unittest.mock import Mock 
+        from unittest.mock import MagicMock   
+
+        @patch('requests.post', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
+        @patch('requests.patch', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
+        def mocked_function():
+            fire.Fire()
+        mocked_function()
+    else:
+        print("running with --production")        
+        sys.argv.remove('--production')        
+        fire.Fire()

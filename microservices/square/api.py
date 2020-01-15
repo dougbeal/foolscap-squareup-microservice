@@ -170,7 +170,7 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
                                     membership['customer_id'] = tender['customer_id']
                                 else:
                                     membership['customer_id'] = ""
-                            membership['note'] = membership.get('note', "") + line_item.get('note', "")
+
                             #membership['quantity'] = line_item['quantity']
                             #membership['item_id'] = catalog_object_id
                             #membership['item_name'] = membership_item_ids[catalog_object_id]
