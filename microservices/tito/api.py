@@ -248,10 +248,12 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                 log.info("badge-name is already %s", answers['badge-name'])
 
         # assign badge number if not Bite and not already assigned
-        if badge_number: 
-            ticket_badge_number = badge_number+num
-            #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })
-            update.setdefault('answers', {}).update({ 'badge-number': str(ticket_badge_number) })
+        if badge_number:
+            ticket_badge_number = int(badge_number)+num
+
+            if answers.get('badge-number') and answers['badge-number'] != ticket_badge_number:
+                #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })                
+                update.setdefault('answers', {}).update({ 'badge-number': ticket_badge_number })
 
         # If anything is set in update, send changes via tito update ticket
         if bool(update):
