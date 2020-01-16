@@ -41,6 +41,10 @@ python -m microservices.tito.main sync 'DEBUG'
 
 # Google Cloud
 ## setup
+# default region - multiregion nam5 due to firestore restrictions
+```
+gcloud compute project-info add-metadata --metadata google-compute-default-region=nam5
+```
 - https://cloud.google.com/functions/docs/quickstart
 - create cloud project called "foolscap microservices"
 - brew cask install google-cloud-sdk
@@ -54,6 +58,34 @@ python -m microservices.tito.main sync 'DEBUG'
 #### tito webhook
 - registration.completed
 #### square webhook
+## deploy functions from source https://cloud.google.com/functions/docs/deploying/rep
+
+- gcloud beta functions deploy function-123 --source https://source.developers.google.com/projects/project-123/repos/default/moveable-alises/master --entry-point function-123 --trigger-http
+- `https://source.developers.google.com/projects/*/repos/*/moveable-aliases/*/paths/*`
+
+```
+function deploy_function {
+    PROJECT_ID=foolscap-microservices 
+    REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
+    BRANCH=master 
+    FUNCTION_NAME=$1
+    gcloud functions deploy $FUNCTION_NAME \
+      --allow-unauthenticated \
+      --source https://source.developers.google.com/projects/$PROJECT_ID/repos/$REPOSITORY_NAME/moveable-aliases/$BRANCH/paths// \
+      --runtime python37 \
+      --entry-point $FUNCTION_NAME \
+      --trigger-http
+}
+```
+```
+deploy_function foolscap_square_webhook
+deploy_function foolscap_tito_webhook
+# test
+curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+  
+```
+
+
 
 Task or PubSub?a
 

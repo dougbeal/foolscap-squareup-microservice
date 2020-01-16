@@ -7,10 +7,54 @@ import microservices.tito.api as api
 PRODUCTION = True
 secrets = None
 
+def create_update_webhook(level=logging.DEBUG):
+    logging.basicConfig(level=level)    
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(api.create_update_webhook(secrets))
 
-def set_webhooks(level=logging.WARNING):
+    except:
+        if not PRODUCTION:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()                          
+
+def delete_all_webhooks(level=logging.DEBUG):
+    logging.basicConfig(level=level)    
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(api.delete_all_webhooks(secrets))
+
+    except:
+        if not PRODUCTION:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()
+
+def get_webhooks(level=logging.DEBUG):
     logging.basicConfig(level=level)
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(api.get_webhooks(secrets))
 
+    except:
+        if not PRODUCTION:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()
+    
+
+def set_webhooks(level=logging.DEBUG):
+    logging.basicConfig(level=level)
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(api.set_webhooks(secrets))
+
+    except:
+        if not PRODUCTION:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()
 
 def sync(level=logging.WARNING):
     logging.basicConfig(level=level)
@@ -87,6 +131,7 @@ if __name__ == '__main__':
         from unittest.mock import Mock 
         from unittest.mock import MagicMock   
 
+        @patch('requests.delete', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}})))         
         @patch('requests.post', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
         @patch('requests.patch', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
         def mocked_function():

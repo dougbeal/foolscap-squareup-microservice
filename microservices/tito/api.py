@@ -89,16 +89,22 @@ async def get_tito_generic(secrets, name, params={}):
     json_result = resp.json()
     return json_result
 
-async def put_tito_generic(secrets, name, json, operation=requests.post):
+async def put_tito_generic(secrets, name, json=None, operation=requests.post):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
     headers = get_write_headers(secrets)
 
-    resp = operation(url, headers=headers, json=json)
+    resp = None
+    if json:
+        resp = operation(url, headers=headers, json=json)
+    else:
+        resp = operation(url, headers=headers)        
     
     log_request(resp)
     resp.raise_for_status()
-    json_result = resp.json()
-    return json_result
+    if resp.text:
+        json_result = resp.json()
+        return json_result
+    return resp.text
 
 
 async def get_answers(secrets, question_slug):
@@ -440,7 +446,38 @@ async def sync(secrets):
     log.info("tasks done")                    
 
 
-
+async def delete_all_webhooks(secrets):
+    log = logging.getLogger(__name__)    
+    hooks = await get_webhooks(secrets)
+    query = parse("$..id")
+    match = query.find(hooks)
+    webhook_ids = [m.value for m in match]
+    log.info("webhook ids %s", webhook_ids)
+    await asyncio.gather(*[asyncio.create_task(
+        put_tito_generic(secrets,
+                         "webhook_endpoints/" + str(whid),
+                         operation=requests.delete
+                         ))
+                         for whid in webhook_ids])
+        
+    
+async def get_webhooks(secrets):
+    return await get_tito_generic(secrets, 'webhook_endpoints')    
+    
+async def set_webhooks(secrets):
+    data = {
+        'webhook_endpoint':
+        {
+            'url': secrets['metadata']['data']['tito']['production']['WEBHOOK_URL'],
+            'included_triggers': ['ticket.created',
+                                  'registration.finished',
+                                  'registration.update',
+                                  'ticket.updated'
+                                  ]
+            }
+        }
+    return await put_tito_generic(secrets, 'webhook_endpoints', data)
+    
 # TODO: add paging for > 100 items
 # TODO: webhook for new registations -> number memberships
 # TODO: mark regs as paid
