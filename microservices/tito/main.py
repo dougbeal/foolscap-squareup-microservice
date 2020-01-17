@@ -44,17 +44,6 @@ def get_webhooks(level=logging.DEBUG):
             pdb.post_mortem()
     
 
-def set_webhooks(level=logging.DEBUG):
-    logging.basicConfig(level=level)
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(api.set_webhooks(secrets))
-
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
 
 def sync(level=logging.WARNING):
     logging.basicConfig(level=level)
@@ -125,8 +114,35 @@ if __name__ == '__main__':
     import sys
     from .. import development_config as config
     secrets = config.secrets
-    if not '--production' in sys.argv:
-        print("running with mocked requests.post and requests.patch")
+    # only one mode
+    # --mode-test
+    # --mode-test-dry-run
+    #   default, reads from tito-test, mocks out writes
+    # --mode-production
+    # --mode-production-dry-run
+
+    dry_run = True
+    if '--mode-production' in sys.argv:
+        sys.argv.remove('--mode-production')
+        api.TITO_MODE = 'production'
+        dry_run = False
+    elif '--mode-production-dry-run' in sys.argv:
+        sys.argv.remove('--mode-production-dry-run')
+        api.TITO_MODE = 'production'
+        dry_run = True
+    elif '--mode-test' in sys.argv:
+        sys.argv.remove('--mode-test')
+        api.TITO_MODE = 'test'
+        dry_run = False
+    else:
+        if '--mode-test-dry-run' in sys.argv:
+            sys.argv.remove('--mode-test-dry-run')
+        api.TITO_MODE = 'test'
+        dry_run = True
+        
+    if dry_run:
+        print("running dry, with mocked requests.post, requests.patch, and requests.delete")
+        print("TITO_MODE " + api.TITO_MODE)
         from unittest.mock import patch
         from unittest.mock import Mock 
         from unittest.mock import MagicMock   
@@ -135,9 +151,8 @@ if __name__ == '__main__':
         @patch('requests.post', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
         @patch('requests.patch', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
         def mocked_function():
-            fire.Fire()
+            return fire.Fire()
         mocked_function()
     else:
-        print("running with --production")        
-        sys.argv.remove('--production')        
+        print("TITO_MODE " + api.TITO_MODE)        
         fire.Fire()

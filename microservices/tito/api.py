@@ -25,10 +25,15 @@ APIHOST = "https://api.tito.io"
 APIVERSION = "v3"
 APIBASE = f"{APIHOST}/{APIVERSION}"
 
-def get_base_headers(secrets):
-    access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
-    #access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
+TITO_MODE = 'test'
 
+TITO_WEBHOOK_TRIGGERS = ['ticket.created',
+                         'registration.finished',
+                         'registration.update',
+                         'ticket.updated'
+                         ]
+def get_base_headers(secrets):
+    access_token = secrets['metadata']['data']['tito'][TITO_MODE]['TITO_SECRET']
     return {
         "Authorization": f"Token token={access_token}",
         "Accept": "application/json",
@@ -37,8 +42,7 @@ def get_base_headers(secrets):
 
 def get_write_headers(secrets):
     base = get_base_headers(secrets)
-    create_access_token = secrets['metadata']['data']['tito']['production']['TITO_SECRET']
-    #create_access_token = secrets['metadata']['data']['tito']['test']['TITO_SECRET']
+    create_access_token = secrets['metadata']['data']['tito'][TITO_MODE]['TITO_SECRET']
     base["Authorization"] = f"Token token={create_access_token}"
     return base
 
@@ -89,7 +93,9 @@ async def get_tito_generic(secrets, name, params={}):
     json_result = resp.json()
     return json_result
 
-async def put_tito_generic(secrets, name, json=None, operation=requests.post):
+async def put_tito_generic(secrets, name, json=None, operation=None):
+    if not operation:
+        operation = requests.post
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
     headers = get_write_headers(secrets)
 
@@ -469,14 +475,44 @@ async def set_webhooks(secrets):
         'webhook_endpoint':
         {
             'url': secrets['metadata']['data']['tito']['production']['WEBHOOK_URL'],
-            'included_triggers': ['ticket.created',
-                                  'registration.finished',
-                                  'registration.update',
-                                  'ticket.updated'
-                                  ]
+            'included_triggers': TITO_WEBHOOK_TRIGGERS
             }
         }
     return await put_tito_generic(secrets, 'webhook_endpoints', data)
+
+async def update_webhook(secrets, webhook_ids):
+    data = {
+        'webhook_endpoint':
+        {
+            'url': secrets['metadata']['data']['tito']['production']['WEBHOOK_URL'],
+            'included_triggers': TITO_WEBHOOK_TRIGGERS
+            }
+        }
+    return await put_tito_generic(secrets, 'webhook_endpoints/' + str(webhook_ids), data, operation=requests.patch)
+
+async def create_update_webhook(secrets):
+    log = logging.getLogger(__name__)        
+    hooks = await get_webhooks(secrets)
+    log.info("hooks %s", hooks)
+
+    if len(hooks['webhook_endpoints']) > 1:
+        log.info("more than one webhook, deleting all")
+        await delete_all_webhooks(secrets)
+        return await set_webhooks(secrets)        
+    elif len(hooks['webhook_endpoints']):
+        triggers = hooks['webhook_endpoints'][0]['included_triggers']
+        webhook_id = hooks['webhook_endpoints'][0]['id']
+        if set(triggers).difference(set(TITO_WEBHOOK_TRIGGERS)):
+            log.info("changes %s", set(triggers).difference(set(TITO_WEBHOOK_TRIGGERS)))
+            log.info("need to update triggers %s:%s, %s:%s", type(triggers[0]), triggers, type(TITO_WEBHOOK_TRIGGERS[0]), TITO_WEBHOOK_TRIGGERS)
+            log.info(triggers[0]==TITO_WEBHOOK_TRIGGERS[0])
+            return await update_webhook(secrets, webhook_id)
+        else:
+            log.info("no trigger changes")
+    else:
+        return await set_webhooks(secrets)        
+
+    
     
 # TODO: add paging for > 100 items
 # TODO: webhook for new registations -> number memberships
