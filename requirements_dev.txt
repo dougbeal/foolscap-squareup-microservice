@@ -3,8 +3,4 @@ fire==0.2.1
 termcolor==1.1.0
 requests-cache==0.5.2
 mock==3.0.5
-google-api-core==1.16.0
-google-auth==1.10.1
-google-cloud-core==1.1.0
-google-cloud-firestore==1.6.1
-googleapis-common-protos==1.50.0
+
