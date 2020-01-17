@@ -16,3 +16,5 @@ requests==2.22.0
 six==1.13.0
 squareup==3.20191120.0
 urllib3==1.25.7
+google==2.0.3
+google-cloud-logging==1.14.0
