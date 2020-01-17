@@ -2,7 +2,7 @@ from pprint import pformat
 
 
 import google.cloud.logging
-
+from google.cloud import firestore
 
 # Instantiates a client
 client = google.cloud.logging.Client()
@@ -15,7 +15,7 @@ import logging
 log = logging.getLogger()
 
 def foolscap_square_webhook(request):
-    log.info(pformat(request))
+    log.info("%s %s", pformat(request), pformat(request.get_data()))
 
 def foolscap_tito_webhook(request):
-    log.info(pformat(request))
+    log.info("%s %s", pformat(request), pformat(request.get_data()))
