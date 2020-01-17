@@ -3,6 +3,7 @@ from pprint import pformat
 
 import google.cloud.logging
 
+
 # Instantiates a client
 client = google.cloud.logging.Client()
 
@@ -10,6 +11,7 @@ client = google.cloud.logging.Client()
 # all logs at INFO level and higher
 client.setup_logging()
 
+import logging
 log = logging.getLogger()
 
 def foolscap_square_webhook(request):
