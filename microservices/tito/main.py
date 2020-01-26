@@ -8,7 +8,7 @@ PRODUCTION = True
 secrets = None
 
 def create_update_webhook(level=logging.DEBUG):
-    logging.basicConfig(level=level)    
+    logging.basicConfig(level=level)
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(api.create_update_webhook(secrets))
@@ -17,10 +17,10 @@ def create_update_webhook(level=logging.DEBUG):
         if not PRODUCTION:
             import pdb, traceback
             traceback.print_exc()
-            pdb.post_mortem()                          
+            pdb.post_mortem()
 
 def delete_all_webhooks(level=logging.DEBUG):
-    logging.basicConfig(level=level)    
+    logging.basicConfig(level=level)
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(api.delete_all_webhooks(secrets))
@@ -42,7 +42,7 @@ def get_webhooks(level=logging.DEBUG):
             import pdb, traceback
             traceback.print_exc()
             pdb.post_mortem()
-    
+
 
 
 def sync(level=logging.WARNING):
@@ -69,7 +69,7 @@ def get_registrations(level=logging.WARNING):
         if not PRODUCTION:
             import pdb, traceback
             traceback.print_exc()
-            pdb.post_mortem()            
+            pdb.post_mortem()
 
 def complete_tito_registrations(level=logging.WARNING):
     logging.basicConfig(level=level)
@@ -95,7 +95,7 @@ def complete_tito_registration(square_data={}, registration={}, registration_slu
         if not PRODUCTION:
             import pdb, traceback
             traceback.print_exc()
-            pdb.post_mortem()            
+            pdb.post_mortem()
 
 def handle_exception(loop, context):
     if not PRODUCTION:
@@ -107,7 +107,7 @@ def handle_exception(loop, context):
 
 
 
-            
+
 if __name__ == '__main__':
     PRODUCTION = False
     import fire
