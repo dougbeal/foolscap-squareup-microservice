@@ -19,12 +19,18 @@ class FirestoreStorage(Storage):
         # production
         client = firestore.Client()
     else:
+        import logging
+        log = logging.getLogger(__name__)
+        log.info("storage in localhost mode.")
         # localhost
         os.environ["FIRESTORE_DATASET"] = "test"
         os.environ["FIRESTORE_EMULATOR_HOST"] = "localhost:8582"
         os.environ["FIRESTORE_EMULATOR_HOST_PATH"] = "localhost:8582/firestore"
         os.environ["FIRESTORE_HOST"] = "http://localhost:8582"
         os.environ["FIRESTORE_PROJECT_ID"] = "test"
+        import glob
+        cred = glob.glob('secrets/*.json', recursive=False)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred[0]
         credentials = mock.Mock(spec=google.auth.credentials.Credentials)
         client = firestore.Client(project="test", credentials=credentials)    
 
