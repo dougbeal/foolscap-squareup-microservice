@@ -139,20 +139,25 @@ if __name__ == '__main__':
             sys.argv.remove('--mode-test-dry-run')
         api.TITO_MODE = 'test'
         dry_run = True
-        
+
     if dry_run:
         print("running dry, with mocked requests.post, requests.patch, and requests.delete")
         print("TITO_MODE " + api.TITO_MODE)
         from unittest.mock import patch
-        from unittest.mock import Mock 
-        from unittest.mock import MagicMock   
+        from unittest.mock import Mock
+        from unittest.mock import MagicMock
 
-        @patch('requests.delete', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}})))         
-        @patch('requests.post', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
-        @patch('requests.patch', MagicMock(side_effect=Mock(status_code=200, json=lambda : {"data": {"id": "test"}}))) 
+        requests_mock = MagicMock()
+        requests_mock.status_code = 200
+        requests_mock.json.return_value = {
+            "registrations": {"slug": "dryrun"}
+            }
+        @patch('requests.delete', requests_mock)
+        @patch('requests.post', requests_mock)
+        @patch('requests.patch', requests_mock)
         def mocked_function():
             return fire.Fire()
         mocked_function()
     else:
-        print("TITO_MODE " + api.TITO_MODE)        
+        print("TITO_MODE " + api.TITO_MODE)
         fire.Fire()
