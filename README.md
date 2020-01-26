@@ -38,7 +38,12 @@ python -m microservices.tito.main sync 'DEBUG'
 ## firebase emulation
 - 
 
+# example run, use real data but don't make any changes
+```
+. bin/activate
+./run.sh  --mode-production-dry-run
 
+```
 # Google Cloud
 ## setup
 # default region - multiregion nam5 due to firestore restrictions
