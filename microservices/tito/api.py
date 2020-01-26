@@ -130,7 +130,9 @@ async def create_tito_registration(secrets, registration, square_data):
     json_result = await put_tito_generic(secrets, 'registrations', json={'registration': registration})
 
     query = Fields('registration')
-    find = query.find(json_result)[0]
+    find = query.find(json_result)
+    assert(len(find)>0)
+    find = find[0]
     log.debug(pformat(find))
 
     registration_slug = find.value['slug']
@@ -199,7 +201,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     log = logging.getLogger(__name__)
 
     log.debug("tito reg %s", pformat(registration))
-    log.debug("sqare dat %s", pformat(square_data))
+    log.debug("square data %s", pformat(square_data))
     query = parse('$..note')
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
@@ -213,11 +215,11 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     # email: beta@foo.bar
     query = parse("$..tickets[*]")
     match = query.find(registration)
-
+    registration_name = registration.get('name', "")
     bite_tickets = [m.value for m in match if not is_membership_ticket(m.value['release_title'])]
     # membership tickets
     membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
-    log.info( "%i membership tickets, %i non-membership tickets", len(membership_tickets), len(bite_tickets))
+    log.info( "%s[%s]: %i membership tickets, %i non-membership tickets", registration_name, badge_number, len(membership_tickets), len(bite_tickets))
     for num, ticket in enumerate(membership_tickets):
         log.debug("membership ticket ticket %i %s", num, pformat(ticket))
         ticket_slug = ticket['slug']
@@ -239,7 +241,9 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
             if not ticket['first_name'] and ticket['registration_name']:
                 update['first_name'] = ticket['registration_name'].split()[0]
             if not ticket['last_name'] and ticket['registration_name']:
-                update['last_name'] = ' '.join(ticket['registration_name'].split()[1:])
+                last_name = ' '.join(ticket['registration_name'].split()[1:])
+                if last_name: 
+                    update['last_name'] = last_name
 
             if not 'badge-name' in answers:
                 badge_name = ticket.get('name', ticket['registration_name'])
@@ -257,15 +261,18 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                     #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
                     update.setdefault('answers',{}).update({ 'badge-name': badge_name })
             else:
-                log.info("badge-name is already %s", answers['badge-name'])
+                log.info("badge-name is already %s", answers)
 
         # assign badge number if not Bite and not already assigned
         if badge_number:
             ticket_badge_number = int(badge_number)+num
 
-            if answers.get('badge-number') and answers['badge-number'] != ticket_badge_number:
-                #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })                
-                update.setdefault('answers', {}).update({ 'badge-number': ticket_badge_number })
+            if (not answers.get('badge-number') or
+                answers.get('badge-number') and answers['badge-number'].isnumeric() and str(answers['badge-number']) != str(ticket_badge_number) ):
+                #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })
+                log.info("badge-number will be updated to %s, answers: %s", ticket_badge_number, answers)
+                # tito wants question answers to be strings
+                update.setdefault('answers', {}).update({ 'badge-number': str(ticket_badge_number) })
 
         # If anything is set in update, send changes via tito update ticket
         if bool(update):
@@ -411,7 +418,7 @@ async def sync(secrets):
                            [square_registrations[item['source']] for item in order_from_square_tito_add])
 
     registration_creation_results = await asyncio.gather(*futures)
-    new_tito_registrations = [r['registration']for r in registration_creation_results]
+    new_tito_registrations = [r['registration'] for r in registration_creation_results if 'registration' in r]
 
     # merge tito native and from square orders, sort by date made
     # sort tito by
