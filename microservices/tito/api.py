@@ -377,6 +377,11 @@ async def sync(secrets):
             if 'variation_name' in line_item:
                 item_name = item_name + " - " + line_item['variation_name']
             quantity = int(line_item['quantity'])
+
+            if not item_name in SQUARE_TITO_MAP:
+                log.warning("item %s not in map.", item_name)
+                continue
+
             tito_name = SQUARE_TITO_MAP[item_name]
             if item_name in DEALER_MEMBERSHIP: # two badger per dealer space
                 quantity *= 2
@@ -396,7 +401,8 @@ async def sync(secrets):
         if not tito['name']:
             tito['name'] = ' '.join(note)
 
-        if not order_id in tito_sources:
+        # if there are no line_items, then its not a membership sale
+        if tito['line_items'] and not order_id in tito_sources:
             log.info(f"add to tito {tito} {order_date}")
             order_from_square_tito_add.append(tito)
         else:
