@@ -16,7 +16,7 @@ import logging
 log = logging.getLogger()
  
 def foolscap_square_webhook(request):
-    log.info("%s %s", pformat(request), pformat(request.get_data()))
+    log.info("%s %s", request, request.get_data())
 
 def foolscap_tito_webhook(request):
-    log.info("%s %s", pformat(request), pformat(request.get_data()))
+    log.info("%s %s", request, request.get_data())
