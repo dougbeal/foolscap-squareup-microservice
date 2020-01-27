@@ -103,8 +103,8 @@ async def put_tito_generic(secrets, name, json=None, operation=None):
     if json:
         resp = operation(url, headers=headers, json=json)
     else:
-        resp = operation(url, headers=headers)        
-    
+        resp = operation(url, headers=headers)
+
     log_request(resp)
     resp.raise_for_status()
     if resp.text:
@@ -196,7 +196,7 @@ async def complete_tito_registration(secrets, square_data={}, registration={}, r
 
 def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
-    
+
 async def update_tito_tickets(secrets, registration, square_data, badge_number=None):
     log = logging.getLogger(__name__)
 
@@ -235,14 +235,14 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
         update = {}
 
         # ticket came from square, unpack data from square customer and note
-        if registration['source']: 
+        if registration['source']:
             if not ticket['email'] and ticket['registration_email']:
                 update['email'] = ticket['registration_email']
             if not ticket['first_name'] and ticket['registration_name']:
                 update['first_name'] = ticket['registration_name'].split()[0]
             if not ticket['last_name'] and ticket['registration_name']:
                 last_name = ' '.join(ticket['registration_name'].split()[1:])
-                if last_name: 
+                if last_name:
                     update['last_name'] = last_name
 
             if not 'badge-name' in answers:
@@ -250,13 +250,13 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                 if notes:
                     if square_names is None:
                         square_names = notes[0].split('\n')
-                    
+
                     raw_badge_name = square_names.pop().split()
                     if len(raw_badge_name) > 2:
                         badge_name = ' '.join(raw_badge_name[0:2])
                     else:
                         badge_name = ' '.join(raw_badge_name)
-                    
+
                 if badge_name:
                     #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
                     update.setdefault('answers',{}).update({ 'badge-name': badge_name })
@@ -283,9 +283,9 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                 update = update.copy()
                 bite = bite_tickets.pop()
                 bite_ticket_slug = bite['slug']
-                update['release_id'] = bite['release_id']                
-                log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))                
-                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {'ticket':update}, operation=requests.patch))                
+                update['release_id'] = bite['release_id']
+                log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))
+                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {'ticket':update}, operation=requests.patch))
         else:
             log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
 
@@ -446,7 +446,7 @@ async def sync(secrets):
         log.info("releases %s", pformat(releases))
 
     # add badge numbers
-    log.info("adding badge numbers")        
+    log.info("adding badge numbers")
     badge_number = 2 # 1 is reserved
     tasks = []
     for registration in sorted_by_date:
@@ -455,13 +455,13 @@ async def sync(secrets):
         badge_number = badge_number + membership_count
 
     # wait for everything to complete before sync is done
-    log.info("await tasks")                
+    log.info("await tasks")
     await asyncio.gather(*tasks)
-    log.info("tasks done")                    
+    log.info("tasks done")
 
 
 async def delete_all_webhooks(secrets):
-    log = logging.getLogger(__name__)    
+    log = logging.getLogger(__name__)
     hooks = await get_webhooks(secrets)
     query = parse("$..id")
     match = query.find(hooks)
@@ -473,11 +473,11 @@ async def delete_all_webhooks(secrets):
                          operation=requests.delete
                          ))
                          for whid in webhook_ids])
-        
-    
+
+
 async def get_webhooks(secrets):
-    return await get_tito_generic(secrets, 'webhook_endpoints')    
-    
+    return await get_tito_generic(secrets, 'webhook_endpoints')
+
 async def set_webhooks(secrets):
     data = {
         'webhook_endpoint':
@@ -499,14 +499,14 @@ async def update_webhook(secrets, webhook_ids):
     return await put_tito_generic(secrets, 'webhook_endpoints/' + str(webhook_ids), data, operation=requests.patch)
 
 async def create_update_webhook(secrets):
-    log = logging.getLogger(__name__)        
+    log = logging.getLogger(__name__)
     hooks = await get_webhooks(secrets)
     log.info("hooks %s", hooks)
 
     if len(hooks['webhook_endpoints']) > 1:
         log.info("more than one webhook, deleting all")
         await delete_all_webhooks(secrets)
-        return await set_webhooks(secrets)        
+        return await set_webhooks(secrets)
     elif len(hooks['webhook_endpoints']):
         triggers = hooks['webhook_endpoints'][0]['included_triggers']
         webhook_id = hooks['webhook_endpoints'][0]['id']
@@ -518,10 +518,10 @@ async def create_update_webhook(secrets):
         else:
             log.info("no trigger changes")
     else:
-        return await set_webhooks(secrets)        
+        return await set_webhooks(secrets)
 
-    
-    
+
+
 # TODO: add paging for > 100 items
 # TODO: webhook for new registations -> number memberships
 # TODO: mark regs as paid
