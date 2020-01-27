@@ -328,7 +328,8 @@ SQUARE_TITO_MAP = {
     "F20 Dealer's Table - Regular": 'Foolscap 2020 Membership - Dealer',
     'F20 Membership - Early Bird': 'Foolscap 2020 Membership - Early Bird',
     'F20 Membership - Student/New': 'Foolscap 2020 Membership - Student or First Timer',
-    'F20 Membership - At con': 'Foolscap 2020 Membership'
+    'F20 Membership - At con': 'Foolscap 2020 Membership',
+    'F20 Membership - Regular': 'Foolscap 2020 Membership'
     }
 
 async def sync(secrets):
