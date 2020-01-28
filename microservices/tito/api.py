@@ -116,46 +116,60 @@ async def put_tito_generic(secrets, name, json=None, operation=None):
 
 async def read_registrations():
     log = logging.getLogger(__name__)
-    json_files = [__file__ + ".json",
-                  __file__.replace('tito', 'square') + '.json']
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(storage.get_storage().read, json_files)
-    tito_document, square_document = await asyncio.gather(*futures)
+    services = ['tito', 'square']
+    events = ['foolscap-2020', 'foolscap-2021']
 
-    t, s = tito_document.get('registrations.registrations'), square_document.get('registrations')
-    #log.debug("tito reg %s", pformat(t))
-    #log.debug("square reg %s", pformat(s))
-    return t,s
+    j = {}
+    for service in services:
+        for event in events:
+            col = await storage.get_storage().get_event_collection_reference(service, event)
+            (j.setdefault('foolscap-microservices', {})
+             .setdefault(service, {})
+             .setdefault(event, {}))['registrations'] = collection_to_obj(col)
+
+    return j
 
 async def dump_documents():
-    log = logging.getLogger(__name__)
+    j = await read_registrations()
 
-    col = await storage.get_storage().base_collection()
-    import pdb
-    pdb.set_trace()
-    obj = collection_to_obj(col)
     with open('collections.dump.json', 'w', encoding='utf-8') as f:
-        json.dump(obj, f, ensure_ascii=False, indent=4)
+        json.dump(j, f, ensure_ascii=False, indent=4)
 
-    return obj
+    return j
 
 def collection_to_obj(col):
-    return list(document_to_obj(doc) for doc in col.stream())
+    log = logging.getLogger(__name__)
+    l = []
+    for doc_snapshot in col.stream():
+        obj = document_to_obj(doc_snapshot)
+        l.append(obj)
+    log.debug("collection[%s] of %i", col.parent, len(l))
+    return l
 
-def document_to_obj(doc):
-    return doc.get().to_dict()
+
+def document_to_obj(doc_snapshot):
+    log = logging.getLogger(__name__)
+
+    obj = doc_snapshot.to_dict()
+    log.debug("document %s %s", doc_snapshot.id, obj)
+    return obj
 
 async def write_tito_registration(j):
     log = logging.getLogger(__name__)
-    log.debug("writing reg %s", pformat(j))
+    log.info("storage reg %s", j.get('name'))
     event = EVENT_SLUG
     if 'event' in j:
         event = j['event']['slug']
     key = j['reference']
     service = 'tito'
     col = await storage.get_storage().get_collection_reference(service, event)
-    col.add(j, document_id=key)
+    document_reference = col.document(key)
+    if not document_reference.get().exists:
+        log.debug("writing reg %s", pformat(j))
+        document_reference.create(j)
+    else:
+        log.debug("reg exists %s", pformat(j))
 
 
 async def get_answers(secrets, question_slug):
@@ -171,6 +185,7 @@ async def get_registrations(secrets):
     registrations = resp['registrations']
     log.info("storing %i registrations", len(registrations))
     tasks = []
+    # TODO: Batch firestore writes
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for reg in registrations:
             tasks.append(asyncio.create_task(write_tito_registration(reg)))
@@ -198,7 +213,10 @@ async def create_tito_registration(secrets, registration, square_data):
 
 
 def square_registration_order_map(square_registrations):
-    return square_registrations
+    m = {}
+    for reg in square_registrations:
+        m[reg['order_id']] = reg
+    return m
 
 def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
@@ -343,22 +361,27 @@ async def sync(secrets):
 
     get_release_task = asyncio.create_task(get_tito_generic(secrets, 'releases'))
     log.info("reading registrations")
-    tito_registrations, square_registrations = await read_registrations()
+    j = await read_registrations()
+
+    tito_registrations = j['foolscap-microservices']['tito'][EVENT_SLUG]['registrations']
+    square_registrations = j['foolscap-microservices']['square'][EVENT_SLUG]['registrations']
+
     # square order_id is used as the source in tito to prevent duplicates
     query = Slice().child(Fields('source'))
     find = query.find(tito_registrations)
     tito_sources = {m.value for m in find}
 
-    log.info( "square fields " + pformat(list(square_registrations.items())[0]))
+    log.info( "square fields " + pformat(square_registrations[0]))
     log.info( "tito fields " + pformat(tito_registrations[0]))
 
-    square_by_date = sorted(list(square_registrations.items()), key=lambda tup: isoparse(tup[1]['closed_at']))
+    square_by_date = sorted(square_registrations, key=lambda reg: isoparse(reg['closed_at']))
 
     order_from_square_tito_add = []
     order_from_square = []
     order_dates = {}
     releases = {}
-    for order_id, order in square_by_date:
+    for order in square_by_date:
+        order_id = order['order_id']
         items = []
         tito = {'discount_code': ''}
 
@@ -394,7 +417,8 @@ async def sync(secrets):
 
             if not releases:
                 releases = {}
-                for item in get_release_task.result()['releases']:
+                result = await get_release_task
+                for item in result['releases']:
                     releases[item['title']] = item['id']
                 log.info("releases %s", pformat(releases))
             item = {
@@ -438,13 +462,15 @@ async def sync(secrets):
     #  'completed_at': '2019-12-22T22:16:16.000-08:00',
     #  filter Source: None
 
+    square_map = square_registration_order_map(square_registrations)
     log.info("adding order_date for sorting")
     for reg in [*tito_registrations, *new_tito_registrations]:
         if reg.get('source') is None:
             reg['order_date'] = reg['completed_at']
         else:
-            reg['order_date'] = order_dates[reg['source']]
-            reg['square_data'] = square_registrations[reg['source']]
+            source = reg['source']
+            reg['order_date'] = order_dates[source]
+            reg['square_data'] = square_map[source]
 
 
     sorted_by_date = sorted([*tito_registrations, *new_tito_registrations], key=lambda item: isoparse(item['order_date']))

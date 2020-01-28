@@ -201,13 +201,35 @@ async def get_customer_details(secrets, client, customer_id):
             return None
     return None
 
+async def write_square_registration(order_id, j):
+    log = logging.getLogger(__name__)
+    log.info("storage reg %s", pformat(j))
+    event = 'foolscap-2020'
+    if 'event' in j:
+        event = j['event']['slug']
+    key = order_id
+    service = 'square'
+    col = await storage.get_storage().get_event_collection_reference(service, event)
+    document_reference = col.document(key)
+    if not document_reference.get().exists:
+        log.debug("writing reg %s", pformat(j))
+        document_reference.create(j)
+    else:
+        log.debug("reg exists %s", pformat(j))
+
 async def get_registrations(secrets, client):
     log = logging.getLogger(__name__)
     membership_item_ids, locations = await get_membership_items(secrets, client)
     log.debug(pformat( membership_item_ids ))
     memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
     log.debug(pformat( memberships ))
-    await storage.get_storage().write(__file__ + ".json", {'registrations': memberships})
+    tasks = []
+    # TODO: Batch firestore writes
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        for order_id, reg in memberships.items():
+            tasks.append(asyncio.create_task(write_square_registration(order_id, reg)))
+    await asyncio.gather(*tasks)    
+    return memberships
 
 async def get_locations(secrets, client):
     log = logging.getLogger(__name__)

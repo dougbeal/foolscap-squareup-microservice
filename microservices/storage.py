@@ -1,5 +1,6 @@
 import urllib
 import os
+import logging
 
 import mock
 from google.cloud import firestore
@@ -50,17 +51,24 @@ class FirestoreStorage(Storage):
 
     # foolscap-microservices/tito/foolscap-2020/registration/N4FD
     @classmethod
-    async def get_document_reference(cls, service, event):
-        ref = cls.client.collection(Storage.collection_name).document(service).collection(Storage.subcollection_name).document(event)
+    async def get_registration_document_reference(cls, service, event, slug):
+        log = logging.getLogger(__name__)
+
+        ref = ((await cls.get_event_collection_reference(service, event))
+               .document(slug))
+        log.debug("document path %s", ref.path)
         return ref
 
+
     @classmethod
-    async def get_collection_reference(cls, service, event):
-        # "foolscap-microservices/tito/event/{event)/registration"
-        # "   col                /tito/ col /{event)/   col      "
-        path = f"foolscap-microservices/{service}/event/{event}/registration"
-        #ref = cls.client.collection(Storage.collection_name).document(service).collection(Storage.subcollection_name).document(event).collection(Storage.subsubcollection_name)
-        return cls.client.collection(path)
+    async def get_event_collection_reference(cls, service, event):
+        log = logging.getLogger(__name__)
+
+        ref = ((await cls.base_collection())
+               .document(service).collection(Storage.subcollection_name)
+               .document(event).collection(Storage.subsubcollection_name))
+        log.debug("collection parent %s", ref.parent.path)
+        return ref
 
     @classmethod
     async def read(cls, name, year='2020'):
