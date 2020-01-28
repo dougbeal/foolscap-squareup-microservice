@@ -6,6 +6,10 @@ from google.cloud import firestore
 import google.auth.credentials
 
 class Storage:
+    collection_name = 'foolscap-microservices'
+    subcollection_name = 'events'
+    subsubcollection_name = 'registration'
+
     @classmethod
     def read(cls, name):
         pass
@@ -32,17 +36,40 @@ class FirestoreStorage(Storage):
         cred = glob.glob('secrets/*.json', recursive=False)
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred[0]
         credentials = mock.Mock(spec=google.auth.credentials.Credentials)
-        client = firestore.Client(project="test", credentials=credentials)    
+        client = firestore.Client(project="test", credentials=credentials)
 
+    # ex get_document_reference('tito', '2020')
+    # ex get_document_reference('tito', '2021')
+
+    # collection(Storage.collection_name) document('tito') collection('events') document('2020')
 
     @classmethod
-    async def read(cls, name):
-        doc_ref = cls.client.collection('foolscap-microservies').document(urllib.parse.quote(name, safe=''))
+    async def base_collection(cls):
+        ref = cls.client.collection(Storage.collection_name)
+        return ref
+
+    # foolscap-microservices/tito/foolscap-2020/registration/N4FD
+    @classmethod
+    async def get_document_reference(cls, service, event):
+        ref = cls.client.collection(Storage.collection_name).document(service).collection(Storage.subcollection_name).document(event)
+        return ref
+
+    @classmethod
+    async def get_collection_reference(cls, service, event):
+        # "foolscap-microservices/tito/event/{event)/registration"
+        # "   col                /tito/ col /{event)/   col      "
+        path = f"foolscap-microservices/{service}/event/{event}/registration"
+        #ref = cls.client.collection(Storage.collection_name).document(service).collection(Storage.subcollection_name).document(event).collection(Storage.subsubcollection_name)
+        return cls.client.collection(path)
+
+    @classmethod
+    async def read(cls, name, year='2020'):
+        doc_ref = cls.client.collection(Storage.collection_name).document(urllib.parse.quote(name, safe=''))
         return doc_ref.get()
 
     @classmethod
-    async def write(cls, name, data):
-        doc_ref = cls.client.collection('foolscap-microservies').document(urllib.parse.quote(name, safe=''))
+    async def write(cls, name, data, year='2020'):
+        doc_ref = cls.client.collection(Storage.collection_name).document(urllib.parse.quote(name, safe=''))
         return doc_ref.set(data)
 
 

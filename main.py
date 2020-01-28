@@ -1,5 +1,6 @@
 from pprint import pformat
 import os
+import asyncio
 
 if os.getenv('GAE_ENV', '').startswith('standard'):
     import google.cloud.logging
@@ -14,9 +15,21 @@ if os.getenv('GAE_ENV', '').startswith('standard'):
 
 import logging
 log = logging.getLogger()
- 
+
 def foolscap_square_webhook(request):
     log.info("%s %s", request, request.get_data())
 
 def foolscap_tito_webhook(request):
+    """HTTP Cloud Function.
+    Args:
+        request (flask.Request): The request object.
+        <http://flask.pocoo.org/docs/1.0/api/#flask.Request>
+    Returns:
+        <http://flask.pocoo.org/docs/1.0/api/#flask.Flask.make_response>.
+    """
     log.info("%s %s", request, request.get_data())
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if '_type' in request_json and request_json['_type'] == 'registration':
+        asyncio.run(api.write_tito_registration(request_json))

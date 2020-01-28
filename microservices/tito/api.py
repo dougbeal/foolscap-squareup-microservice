@@ -2,6 +2,7 @@ from pprint import pformat
 import asyncio
 import concurrent.futures
 import logging
+import json
 
 from dateutil.parser import isoparse
 from jsonpath_ng import jsonpath, Slice, Fields, Root
@@ -113,6 +114,50 @@ async def put_tito_generic(secrets, name, json=None, operation=None):
     return resp.text
 
 
+async def read_registrations():
+    log = logging.getLogger(__name__)
+    json_files = [__file__ + ".json",
+                  __file__.replace('tito', 'square') + '.json']
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = pool.map(storage.get_storage().read, json_files)
+    tito_document, square_document = await asyncio.gather(*futures)
+
+    t, s = tito_document.get('registrations.registrations'), square_document.get('registrations')
+    #log.debug("tito reg %s", pformat(t))
+    #log.debug("square reg %s", pformat(s))
+    return t,s
+
+async def dump_documents():
+    log = logging.getLogger(__name__)
+
+    col = await storage.get_storage().base_collection()
+    import pdb
+    pdb.set_trace()
+    obj = collection_to_obj(col)
+    with open('collections.dump.json', 'w', encoding='utf-8') as f:
+        json.dump(obj, f, ensure_ascii=False, indent=4)
+
+    return obj
+
+def collection_to_obj(col):
+    return list(document_to_obj(doc) for doc in col.stream())
+
+def document_to_obj(doc):
+    return doc.get().to_dict()
+
+async def write_tito_registration(j):
+    log = logging.getLogger(__name__)
+    log.debug("writing reg %s", pformat(j))
+    event = EVENT_SLUG
+    if 'event' in j:
+        event = j['event']['slug']
+    key = j['reference']
+    service = 'tito'
+    col = await storage.get_storage().get_collection_reference(service, event)
+    col.add(j, document_id=key)
+
+
 async def get_answers(secrets, question_slug):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions/{question_slug}/answers"
     headers = get_base_headers(secrets)
@@ -120,8 +165,17 @@ async def get_answers(secrets, question_slug):
     return response.json()
 
 async def get_registrations(secrets):
-    registrations = await get_tito_generic(secrets, "registrations", params={ 'view': 'extended' })
-    await storage.get_storage().write(__file__ + ".json", {'registrations': registrations})
+    log = logging.getLogger(__name__)
+    resp = await get_tito_generic(secrets, "registrations", params={ 'view': 'extended' })
+
+    registrations = resp['registrations']
+    log.info("storing %i registrations", len(registrations))
+    tasks = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        for reg in registrations:
+            tasks.append(asyncio.create_task(write_tito_registration(reg)))
+    await asyncio.gather(*tasks)
+    return registrations
 
 
 async def create_tito_registration(secrets, registration, square_data):
@@ -142,40 +196,6 @@ async def create_tito_registration(secrets, registration, square_data):
     return json_result
 
 
-async def read_registrations():
-    log = logging.getLogger(__name__)
-    json_files = [__file__ + ".json",
-                  __file__.replace('tito', 'square') + '.json']
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(storage.get_storage().read, json_files)
-    tito_document, square_document = await asyncio.gather(*futures)
-
-    t, s = tito_document.get('registrations.registrations'), square_document.get('registrations')
-    #log.debug("tito reg %s", pformat(t))
-    #log.debug("square reg %s", pformat(s))
-    return t,s
-
-async def dump_documents():
-    log = logging.getLogger(__name__)
-    json_files = [__file__ + ".json",
-                  __file__.replace('tito', 'square') + '.json']
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(storage.get_storage().read, json_files)
-    tito_document, square_document = await asyncio.gather(*futures)
-
-    t, s = tito_document.get('registrations'), square_document.get('registrations')
-    tito_json_document = {"tito": t}
-    square_json_document = {"square": s}
-
-    with open('tito.dump.json', 'w', encoding='utf-8') as f:
-        json.dump(tito_json_document, f, ensure_ascii=False, indent=4)
-
-    with open('square.dump.json', 'w', encoding='utf-8') as f:
-        json.dump(square_json_document, f, ensure_ascii=False, indent=4)
-
-    return tito_json_document, square_json_document
 
 def square_registration_order_map(square_registrations):
     return square_registrations
