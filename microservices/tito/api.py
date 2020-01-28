@@ -306,7 +306,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                 bite_ticket_slug = bite['slug']
                 update['release_id'] = bite['release_id']
                 log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))
-                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {'ticket':update}, operation=requests.patch))
+                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {"ticket":update}, operation=requests.patch))
         else:
             log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
 
