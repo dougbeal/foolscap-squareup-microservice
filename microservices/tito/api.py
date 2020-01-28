@@ -180,41 +180,6 @@ async def dump_documents():
 def square_registration_order_map(square_registrations):
     return square_registrations
 
-# created registrations before confirming invice and update_tito_tickets, so this function goes back and does those
-async def complete_tito_registrations(secrets):
-    log = logging.getLogger(__name__)
-
-    tito_registrations, square_registrations = await read_registrations()
-
-    orders = square_registration_order_map(square_registrations)
-
-    for registration in tito_registrations:
-        #asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
-        #asyncio.create_task(update_tito_tickets(secrets, registration))
-        square_data = orders.get(registration.get('source', None), {})
-        asyncio.create_task(complete_tito_registration(secrets, square_data=square_data, registration=registration))
-
-# created registrations before confirming invoice and update_tito_tickets, so this function goes back and does those
-# does a single registration by slug
-async def complete_tito_registration(secrets, square_data={}, registration={}, registration_slug=""):
-    log = logging.getLogger(__name__)
-    assert registration or registration_slug, "must be supplied with registration or registration_slug"
-    # is supplied with registration slug, read data in
-    if not registration and registration_slug:
-        log.info("find tito reg slug %s", registration_slug)
-        tito_registrations, square_registrations = await read_registrations()
-        assert tito_registrations, "registrations must be loaded into storage"
-        for reg in tito_registrations:
-            if reg['slug'] == registration_slug:
-                registration = reg
-                break
-        assert registration, "invalid registration_slug, no registration found"
-        orders = square_registration_order_map(square_registrations)
-        square_data = orders.get(registration.get('source', None), {})
-
-    await asyncio.create_task(update_tito_tickets(secrets, registration, square_data))
-
-
 def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
 
