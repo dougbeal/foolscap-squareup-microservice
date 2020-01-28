@@ -27,10 +27,10 @@ APIBASE = f"{APIHOST}/{APIVERSION}"
 
 TITO_MODE = 'test'
 
-TITO_WEBHOOK_TRIGGERS = ['ticket.created',
-                         'registration.finished',
-                         'registration.update',
-                         'ticket.updated'
+TITO_WEBHOOK_TRIGGERS = [#'ticket.created',
+                        'registration.finished',
+                         # 'registration.update',
+                         # 'ticket.updated'
                          ]
 def get_base_headers(secrets):
     access_token = secrets['metadata']['data']['tito'][TITO_MODE]['TITO_SECRET']
