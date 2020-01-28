@@ -97,6 +97,19 @@ def complete_tito_registration(square_data={}, registration={}, registration_slu
             traceback.print_exc()
             pdb.post_mortem()
 
+def dump_storage(level=logging.WARNING):
+    logging.basicConfig(level=level)
+    tito = {}
+    square = {}
+    try:
+        tito, square = asyncio.run(api.dump_documents())
+    except:
+        if not PRODUCTION:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()
+
+
 def handle_exception(loop, context):
     if not PRODUCTION:
         log = logging.getLogger(__name__)

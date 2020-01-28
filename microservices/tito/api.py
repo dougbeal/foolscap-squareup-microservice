@@ -156,6 +156,27 @@ async def read_registrations():
     #log.debug("square reg %s", pformat(s))
     return t,s
 
+async def dump_documents():
+    log = logging.getLogger(__name__)
+    json_files = [__file__ + ".json",
+                  __file__.replace('tito', 'square') + '.json']
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = pool.map(storage.get_storage().read, json_files)
+    tito_document, square_document = await asyncio.gather(*futures)
+
+    t, s = tito_document.get('registrations'), square_document.get('registrations')
+    tito_json_document = {"tito": t}
+    square_json_document = {"square": s}
+
+    with open('tito.dump.json', 'w', encoding='utf-8') as f:
+        json.dump(tito_json_document, f, ensure_ascii=False, indent=4)
+
+    with open('square.dump.json', 'w', encoding='utf-8') as f:
+        json.dump(square_json_document, f, ensure_ascii=False, indent=4)
+
+    return tito_json_document, square_json_document
+
 def square_registration_order_map(square_registrations):
     return square_registrations
 
