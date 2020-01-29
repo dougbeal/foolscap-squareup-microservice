@@ -49,10 +49,6 @@ def firetore_registration_document_changed(data, context):
     """
     trigger_resource = context.resource
 
-    log.info('Function triggered by change to: %s' % trigger_resource)
-
-    log.info('\nOld value:')
-    log.info(json.dumps(data["oldValue"]))
-
-    log.info('\nNew value:')
-    log.info(json.dumps(data["value"]))
+    log.info('Function triggered by change to: %s' % trigger_resource +
+             json.dumps(data)
+             )
