@@ -103,7 +103,7 @@ function deploy_firestore_function {
       --runtime python37 \
       --entry-point $FUNCTION_NAME \
       --trigger-event providers/cloud.firestore/eventTypes/document.write \
-      --trigger-resource projects/$PROJECT_ID/databases/(default)/documents/
+      --trigger-resource projects/$PROJECT_ID/databases/(default)/documents/$2
 }
 ```
 ```
