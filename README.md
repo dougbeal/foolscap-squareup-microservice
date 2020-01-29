@@ -69,7 +69,7 @@ gcloud compute project-info add-metadata --metadata google-compute-default-regio
 - `https://source.developers.google.com/projects/*/repos/*/moveable-aliases/*/paths/*`
 
 ```
-function deploy_function {
+function deploy_http_function {
     PROJECT_ID=foolscap-microservices 
     REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
     BRANCH=master 
@@ -83,10 +83,31 @@ function deploy_function {
 }
 ```
 ```
-deploy_function foolscap_square_webhook
-deploy_function foolscap_tito_webhook
+deploy_http_function foolscap_square_webhook
+deploy_http_function foolscap_tito_webhook
 # test
 curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+  
+```
+
+# created/updated/deleted
+```
+function deploy_firestore_function {
+    PROJECT_ID=foolscap-microservices 
+    REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
+    BRANCH=master 
+    FUNCTION_NAME=$1
+    gcloud functions deploy $FUNCTION_NAME \
+      --allow-unauthenticated \
+      --source https://source.developers.google.com/projects/$PROJECT_ID/repos/$REPOSITORY_NAME/moveable-aliases/$BRANCH/paths// \
+      --runtime python37 \
+      --entry-point $FUNCTION_NAME \
+      --trigger-event providers/cloud.firestore/eventTypes/document.write \
+      --trigger-resource projects/$PROJECT_ID/databases/(default)/documents/
+}
+```
+```
+deploy_firestore_function firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
   
 ```
 

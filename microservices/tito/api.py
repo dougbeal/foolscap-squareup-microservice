@@ -116,17 +116,19 @@ async def put_tito_generic(secrets, name, json=None, operation=None):
 
 async def read_registrations():
     log = logging.getLogger(__name__)
-
+    st = storage.get_storage()
     services = ['tito', 'square']
     events = ['foolscap-2020', 'foolscap-2021']
 
     j = {}
     for service in services:
         for event in events:
-            col = await storage.get_storage().get_event_collection_reference(service, event)
-            (j.setdefault('foolscap-microservices', {})
-             .setdefault(service, {})
-             .setdefault(event, {}))['registrations'] = collection_to_obj(col)
+            col = await st.get_event_collection_reference(service, event)
+            (j.setdefault(st.col0, {}) # foolscap-microservices
+             .setdefault(service, {}) # tito or square
+             .setdefault(st.col1, {}) # events
+             .setdefault(event, {})   # foolscap-2020
+             )[st.col2] = collection_to_obj(col) # registrations
 
     return j
 
@@ -163,7 +165,7 @@ async def write_tito_registration(j):
         event = j['event']['slug']
     key = j['reference']
     service = 'tito'
-    col = await storage.get_storage().get_collection_reference(service, event)
+    col = await storage.get_storage().get_event_collection_reference(service, event)
     document_reference = col.document(key)
     if not document_reference.get().exists:
         log.debug("writing reg %s", pformat(j))
@@ -272,7 +274,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
             if not 'badge-name' in answers:
                 badge_name = ticket.get('name', ticket['registration_name'])
                 if notes:
-                    if square_names is None:
+                    if not square_names:
                         square_names = notes[0].split('\n')
 
                     raw_badge_name = square_names.pop().split()
@@ -362,9 +364,12 @@ async def sync(secrets):
     get_release_task = asyncio.create_task(get_tito_generic(secrets, 'releases'))
     log.info("reading registrations")
     j = await read_registrations()
+    st = storage.get_storage()
 
-    tito_registrations = j['foolscap-microservices']['tito'][EVENT_SLUG]['registrations']
-    square_registrations = j['foolscap-microservices']['square'][EVENT_SLUG]['registrations']
+    tito_registrations = j[st.col0]['tito'][st.col1][EVENT_SLUG][st.col2]
+    square_registrations = j[st.col0]['square'][st.col1][EVENT_SLUG][st.col2]
+
+    # TODO: filter out test or production tito entries
 
     # square order_id is used as the source in tito to prevent duplicates
     query = Slice().child(Fields('source'))

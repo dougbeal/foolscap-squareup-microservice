@@ -7,9 +7,9 @@ from google.cloud import firestore
 import google.auth.credentials
 
 class Storage:
-    collection_name = 'foolscap-microservices'
-    subcollection_name = 'events'
-    subsubcollection_name = 'registration'
+    col0 = collection_name = 'foolscap-microservices'
+    col1 = subcollection_name = 'events'
+    col2 = subsubcollection_name = 'registrations'
 
     @classmethod
     def read(cls, name):
@@ -49,7 +49,7 @@ class FirestoreStorage(Storage):
         ref = cls.client.collection(Storage.collection_name)
         return ref
 
-    # foolscap-microservices/tito/foolscap-2020/registration/N4FD
+    # foolscap-microservices/tito/events/foolscap-2020/registrations/N4FD
     @classmethod
     async def get_registration_document_reference(cls, service, event, slug):
         log = logging.getLogger(__name__)

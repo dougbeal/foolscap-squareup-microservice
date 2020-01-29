@@ -1,6 +1,7 @@
 from pprint import pformat
 import os
 import asyncio
+import json
 
 if os.getenv('GAE_ENV', '').startswith('standard'):
     import google.cloud.logging
@@ -33,3 +34,25 @@ def foolscap_tito_webhook(request):
 
     if '_type' in request_json and request_json['_type'] == 'registration':
         asyncio.run(api.write_tito_registration(request_json))
+
+# https://cloud.google.com/functions/docs/calling/cloud-firestore
+# gcloud functions deploy FUNCTION_NAME \
+#  --runtime RUNTIME
+#  --trigger-event providers/cloud.firestore/eventTypes/document.write \
+#  --trigger-resource projects/YOUR_PROJECT_ID/databases/(default)/documents/messages/{pushId}
+
+def firetore_registration_document_changed():
+    """ Triggered by a change to a Firestore document.
+    Args:
+        data (dict): The event payload.
+        context (google.cloud.functions.Context): Metadata for the event.
+    """
+    trigger_resource = context.resource
+
+    log.info('Function triggered by change to: %s' % trigger_resource)
+
+    log.info('\nOld value:')
+    log.info(json.dumps(data["oldValue"]))
+
+    log.info('\nNew value:')
+    log.info(json.dumps(data["value"]))
