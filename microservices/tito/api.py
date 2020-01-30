@@ -68,7 +68,7 @@ def log_request(response):
                   response.headers,
                   response.text
                   )
-        log.error("locals %s", pformat(locals()))
+        log.error("locals %s", locals())
     else:
         log.info("%s: %s %s %s\n\t",
                  response.status_code, cache, response.request.method, response.request.url)
@@ -168,10 +168,10 @@ async def write_tito_registration(j):
     col = await storage.get_storage().get_event_collection_reference(service, event)
     document_reference = col.document(key)
     if not document_reference.get().exists:
-        log.debug("writing reg %s", pformat(j))
+        log.debug("writing reg %s", j)
         document_reference.create(j)
     else:
-        log.debug("reg exists %s", pformat(j))
+        log.debug("reg exists %s", j)
 
 
 async def get_answers(secrets, question_slug):
@@ -204,7 +204,7 @@ async def create_tito_registration(secrets, registration, square_data):
     find = query.find(json_result)
     assert(len(find)>0)
     find = find[0]
-    log.debug(pformat(find))
+    log.debug(find)
 
     registration_slug = find.value['slug']
     asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
@@ -226,13 +226,13 @@ def is_membership_ticket(title):
 async def update_tito_tickets(secrets, registration, square_data, badge_number=None):
     log = logging.getLogger(__name__)
 
-    log.debug("tito reg %s", pformat(registration))
-    log.debug("square data %s", pformat(square_data))
+    log.debug("tito reg %s", registration)
+    log.debug("square data %s", square_data)
     query = parse('$..note')
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
     square_names = None
-    log.info("notes %s", pformat(notes))
+    log.info("notes %s", notes)
     # came from square, try to determine Badge Name from registration_name
     # syntax
     # badge-name: Badge Alpha
@@ -247,7 +247,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
     log.info( "%s[%s]: %i membership tickets, %i non-membership tickets", registration_name, badge_number, len(membership_tickets), len(bite_tickets))
     for num, ticket in enumerate(membership_tickets):
-        log.debug("membership ticket ticket %i %s", num, pformat(ticket))
+        log.debug("membership ticket ticket %i %s", num, ticket)
         ticket_slug = ticket['slug']
 
         if not 'responses' in ticket:

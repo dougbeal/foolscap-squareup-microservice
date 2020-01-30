@@ -79,7 +79,7 @@ async def get_membership_items(secrets, client):
     )
     if result.is_success():
         json = result.body
-        log.debug(pformat(json))
+        log.debug(json)
 
         dats = parse("objects[*]").find(json)
         for dat in dats:
@@ -117,7 +117,7 @@ async def get_membership_items(secrets, client):
 
 async def get_membership_orders(secrets, client, membership_item_ids, locations):
     log = logging.getLogger(__name__)
-    log.info("searching for orders in locations %s", pformat(locations))
+    log.info("searching for orders in locations %s", locations)
     result = client.orders.search_orders(
         body = {
             "return_entries": False,
@@ -148,7 +148,7 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
     membership_orders = {}
 
     if result.is_success():
-        log.debug("orders: " + pformat(result.body))
+        log.debug("orders: " + result.body)
         for order in result.body['orders']:
             order_id = order['id']
             membership = {}
@@ -179,7 +179,7 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
 
 
 
-    log.debug(pformat(membership_orders))
+    log.debug(membership_orders)
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         orders = membership_orders.values()
@@ -203,7 +203,7 @@ async def get_customer_details(secrets, client, customer_id):
 
 async def write_square_registration(order_id, j):
     log = logging.getLogger(__name__)
-    log.info("storage reg %s", pformat(j))
+    log.info("storage reg %s", j)
     event = 'foolscap-2020'
     if 'event' in j:
         event = j['event']['slug']
@@ -212,17 +212,17 @@ async def write_square_registration(order_id, j):
     col = await storage.get_storage().get_event_collection_reference(service, event)
     document_reference = col.document(key)
     if not document_reference.get().exists:
-        log.debug("writing reg %s", pformat(j))
+        log.debug("writing reg %s", j)
         document_reference.create(j)
     else:
-        log.debug("reg exists %s", pformat(j))
+        log.debug("reg exists %s", j)
 
 async def get_registrations(secrets, client):
     log = logging.getLogger(__name__)
     membership_item_ids, locations = await get_membership_items(secrets, client)
-    log.debug(pformat( membership_item_ids ))
+    log.debug( membership_item_ids )
     memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
-    log.debug(pformat( memberships ))
+    log.debug( memberships )
     tasks = []
     # TODO: Batch firestore writes
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -250,10 +250,10 @@ async def set_webhook(secrets, client):
     #query = Fields('locations').child(Slice())
     query = parse("$..locations[?(@.status='ACTIVE')]", debug=True)
     match = query.find(json)
-    log.debug("match " + pformat(match[0].value))
+    log.debug("match " + match[0].value)
 
     location_ids = [m.value['id'] for m in match]
-    log.debug("location ids " + pformat(location_ids))
+    log.debug("location ids " + location_ids)
 
     # ASSUMPTION: only one active location id
     
@@ -271,7 +271,7 @@ async def set_webhook(secrets, client):
     r.raise_for_status()
 
     json = r.json()
-    log.debug(pformat(json))
+    log.debug(json)
 
 
 
