@@ -207,8 +207,12 @@ OUTPUT:
 - Google Secret Manager? https://cloud.google.com/secret-manager/docs/quickstart-secret-manager-console
 - https://cloud.google.com/secret-manager/docs/quickstart-secret-manager-api
 - https://dev.to/googlecloud/using-secrets-in-google-cloud-functions-5aem
-- $ gcloud beta secrets create secrets --replication-policy=automatic --data-file=secrets.yaml
-
+```
+gcloud beta secrets create secrets --replication-policy=automatic --data-file=secrets.yaml
+gcloud beta secrets add-iam-policy-binding secrets \
+    --role roles/secretmanager.secretAccessor \
+    --member serviceAccount:foolscap-microservices@appspot.gserviceaccount.com
+```
 
 
 
