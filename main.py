@@ -12,7 +12,7 @@ import microservices.square.api
 
 secrets = {}
 project_id = "foolscap-microservices"
-if os.getenv('GAE_ENV', '').startswith('standard'):
+if os.getenv('GCP_PROJECT', ''):
     import google.cloud.logging
     from google.cloud import firestore
 

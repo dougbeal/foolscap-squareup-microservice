@@ -20,12 +20,12 @@ class Storage:
         pass
 
 class FirestoreStorage(Storage):
-    if os.getenv('GAE_ENV', '').startswith('standard'):
-        # production
+    if os.getenv('GCP_PROJECT', ''):
+        # production as google function
         client = firestore.Client()
     else:
         import logging
-        import mock        
+        import mock
         log = logging.getLogger(__name__)
         log.info("storage in localhost mode.")
         # localhost
