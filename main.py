@@ -34,20 +34,12 @@ if os.getenv('GCP_PROJECT', ''):
     response = secret_client.access_secret_version(resource_name)
     secrets = yaml.load(response.payload.data.decode('UTF-8'), Loader=Loader)
 
-    import firebase_admin
-    from firebase_admin import credentials
-    from firebase_admin import firestore
-
-    # Use the application default credentials
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred, {
-      'projectId': project_id,
-    })
 
 
 
 
 import logging
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
 
 def foolscap_square_webhook(request):
