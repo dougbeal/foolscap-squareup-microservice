@@ -148,7 +148,7 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
     membership_orders = {}
 
     if result.is_success():
-        log.debug("orders: " + result.body)
+        log.debug("orders: %s", result.body)
         for order in result.body['orders']:
             order_id = order['id']
             membership = {}
@@ -203,7 +203,8 @@ async def get_customer_details(secrets, client, customer_id):
 
 async def write_square_registration(order_id, j):
     log = logging.getLogger(__name__)
-    log.info("storage reg %s", j)
+    log.info("storage reg %s", j.get('customer_id'))
+
     event = 'foolscap-2020'
     if 'event' in j:
         event = j['event']['slug']
@@ -250,7 +251,7 @@ async def set_webhook(secrets, client):
     #query = Fields('locations').child(Slice())
     query = parse("$..locations[?(@.status='ACTIVE')]", debug=True)
     match = query.find(json)
-    log.debug("match " + match[0].value)
+    log.debug("match %s", match[0].value)
 
     location_ids = [m.value['id'] for m in match]
     log.debug("location ids " + location_ids)
