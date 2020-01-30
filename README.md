@@ -68,6 +68,7 @@ gcloud compute project-info add-metadata --metadata google-compute-default-regio
 - gcloud beta functions deploy function-123 --source https://source.developers.google.com/projects/project-123/repos/default/moveable-alises/master --entry-point function-123 --trigger-http
 - `https://source.developers.google.com/projects/*/repos/*/moveable-aliases/*/paths/*`
 
+# deloy helper functions
 ```
 function deploy_http_function {
     PROJECT_ID=foolscap-microservices 
@@ -81,16 +82,7 @@ function deploy_http_function {
       --entry-point $FUNCTION_NAME \
       --trigger-http
 }
-```
-```
-deploy_http_function foolscap_square_webhook
-deploy_http_function foolscap_tito_webhook
-# test
-curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
-  
-```
 
-```
 function deploy_firestore_function {
     PROJECT_ID=foolscap-microservices 
     REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
@@ -104,12 +96,7 @@ function deploy_firestore_function {
       --trigger-event providers/cloud.firestore/eventTypes/document.write \
       --trigger-resource "projects/$PROJECT_ID/databases/(default)/documents/$DOCUMENT_PATH"
 }
-```
-```
-deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
-```
 
-```
 function deploy_pubsub_function {
     PROJECT_ID=foolscap-microservices 
     REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
@@ -124,6 +111,15 @@ function deploy_pubsub_function {
 }
 ```
 ```
+deploy_http_function foolscap_square_webhook
+deploy_http_function foolscap_tito_webhook
+
+# test
+curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+  
+
+deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
+
 deploy_pubsub_function foolscap_pubsub_topic_square_change square.change
   
 ```

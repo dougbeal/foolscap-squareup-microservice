@@ -11,6 +11,7 @@ import yaml
 import microservices.square.api
 
 secrets = {}
+project_id = "foolscap-microservices"
 if os.getenv('GAE_ENV', '').startswith('standard'):
     import google.cloud.logging
     from google.cloud import firestore
@@ -24,7 +25,7 @@ if os.getenv('GAE_ENV', '').startswith('standard'):
     
     secret_client = secretmanager.SecretManagerServiceClient()
     secret_name = "secrets"
-    project_id = storage.get_storage.collection_name
+
     resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
     response = secret_client.access_secret_version(resource_name)
     secrets = yaml.load(response.payload.data.decode('UTF-8'))
@@ -38,7 +39,7 @@ def foolscap_square_webhook(request):
     # TODO topic_name = "Your Pub/Sub topic name"
 
     publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(storage.get_storage().collection_name,
+    topic_path = publisher.topic_path(project_id,
                                       'square.change')
 
      # data must be a bytestring.
