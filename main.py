@@ -26,13 +26,26 @@ if os.getenv('GCP_PROJECT', ''):
     # Connects the logger to the root logging handler; by default this captures
     # all logs at INFO level and higher
     logging_client.setup_logging()
-    
+
     secret_client = secretmanager.SecretManagerServiceClient()
     secret_name = "secrets"
 
     resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
     response = secret_client.access_secret_version(resource_name)
     secrets = yaml.load(response.payload.data.decode('UTF-8'), Loader=Loader)
+
+    import firebase_admin
+    from firebase_admin import credentials
+    from firebase_admin import firestore
+
+    # Use the application default credentials
+    cred = credentials.ApplicationDefault()
+    firebase_admin.initialize_app(cred, {
+      'projectId': project_id,
+    })
+
+
+
 
 import logging
 log = logging.getLogger()

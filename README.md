@@ -194,7 +194,10 @@ OUTPUT:
 
 
 
-
+# google cloud firestore
+```
+gcloud alpha firestore databases create --region=us-central
+```
 
 # TODO
 ## for production
