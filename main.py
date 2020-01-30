@@ -7,6 +7,10 @@ from google.cloud import pubsub_v1
 from google.cloud import secretmanager
 import square.client
 import yaml
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
 
 import microservices.square.api
 
@@ -28,7 +32,7 @@ if os.getenv('GCP_PROJECT', ''):
 
     resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
     response = secret_client.access_secret_version(resource_name)
-    secrets = yaml.load(response.payload.data.decode('UTF-8'))
+    secrets = yaml.load(response.payload.data.decode('UTF-8'), Loader=Loader)
 
 import logging
 log = logging.getLogger()
@@ -43,7 +47,8 @@ def foolscap_square_webhook(request):
                                       'square.change')
 
      # data must be a bytestring.
-    future = publisher.publish(topic_path, data=None, origin="webhook")
+    data = "foolscap_square_webhook".encode("utf-8")
+    future = publisher.publish(topic_path, data=data, origin="webhook")
     log.info("%s %s: %s", request, request.get_data(), future.result())
 
 def foolscap_tito_webhook(request):
