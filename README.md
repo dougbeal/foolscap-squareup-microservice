@@ -97,17 +97,17 @@ function deploy_firestore_function {
     REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
     BRANCH=master 
     FUNCTION_NAME=$1
+    DOCUMENT_PATH=$2
     gcloud functions deploy $FUNCTION_NAME \
-      --allow-unauthenticated \
       --source https://source.developers.google.com/projects/$PROJECT_ID/repos/$REPOSITORY_NAME/moveable-aliases/$BRANCH/paths// \
       --runtime python37 \
       --entry-point $FUNCTION_NAME \
       --trigger-event providers/cloud.firestore/eventTypes/document.write \
-      --trigger-resource projects/$PROJECT_ID/databases/(default)/documents/$2
+      --trigger-resource "projects/$PROJECT_ID/databases/(default)/documents/$DOCUMENT_PATH"
 }
 ```
 ```
-deploy_firestore_function firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
+deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
   
 ```
 

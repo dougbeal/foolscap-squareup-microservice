@@ -41,7 +41,7 @@ def foolscap_tito_webhook(request):
 #  --trigger-event providers/cloud.firestore/eventTypes/document.write \
 #  --trigger-resource projects/YOUR_PROJECT_ID/databases/(default)/documents/messages/{pushId}
 
-def firetore_registration_document_changed(data, context):
+def foolscap_firestore_registration_document_changed(data, context):
     """ Triggered by a change to a Firestore document.
     Args:
         data (dict): The event payload.
