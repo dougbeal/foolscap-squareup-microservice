@@ -2,7 +2,7 @@ import urllib
 import os
 import logging
 
-import mock
+
 from google.cloud import firestore
 import google.auth.credentials
 
@@ -25,6 +25,7 @@ class FirestoreStorage(Storage):
         client = firestore.Client()
     else:
         import logging
+        import mock        
         log = logging.getLogger(__name__)
         log.info("storage in localhost mode.")
         # localhost
