@@ -90,7 +90,6 @@ curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_N
   
 ```
 
-# created/updated/deleted
 ```
 function deploy_firestore_function {
     PROJECT_ID=foolscap-microservices 
@@ -108,10 +107,31 @@ function deploy_firestore_function {
 ```
 ```
 deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
+```
+
+```
+function deploy_pubsub_function {
+    PROJECT_ID=foolscap-microservices 
+    REPOSITORY_NAME=github_dougbeal_foolscap-squareup-microservice 
+    BRANCH=master 
+    FUNCTION_NAME=$1
+    TOPIC=$2
+    gcloud functions deploy $FUNCTION_NAME \
+      --source https://source.developers.google.com/projects/$PROJECT_ID/repos/$REPOSITORY_NAME/moveable-aliases/$BRANCH/paths// \
+      --runtime python37 \
+      --entry-point $FUNCTION_NAME \
+      --trigger-topic $TOPIC
+}
+```
+```
+deploy_pubsub_function foolscap_pubsub_topic_square_change square.change
   
 ```
 
-
+# add dependencies, account for packages already in requirements*.txt
+```
+pip  freeze -r requirements.txt -r requirements_dev.txt
+```
 
 Task or PubSub?a
 
@@ -190,27 +210,10 @@ OUTPUT:
 - supply secrets as env variables https://cloud.google.com/functions/docs/env-var
 - Google Secret Manager? https://cloud.google.com/secret-manager/docs/quickstart-secret-manager-console
 - https://cloud.google.com/secret-manager/docs/quickstart-secret-manager-api
+- https://dev.to/googlecloud/using-secrets-in-google-cloud-functions-5aem
 - $ gcloud beta secrets create secrets --replication-policy=automatic --data-file=secrets.yaml
 
 
-   .
-   .......... .....    .  .   . .............
-   .               .............       .. ..
-   .                                       .
-    .    square webhook                    .
-    .    in person sale                   .
-     .                                    .
-     .                          .. . . ....
-     .         ... ..... ... .
-     ... .... .
-    ..                             .....
-    .  ... .  . . .  . . . . ... ..    .
-     .                                 .
-     .  tito webook                     .
-     .  online sale                     .
-     .                                  .
-     ..... .. .          . ........ .....
-                ..  .. .
 
 
 TODO: rename repo to foolscap-microservices
