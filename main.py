@@ -26,7 +26,7 @@ if os.getenv('GCP_PROJECT', ''):
     secret_client = secretmanager.SecretManagerServiceClient()
     secret_name = "secrets"
 
-    resource_name = f"projects/{project_id}/secrets/{secret_name}"
+    resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
     response = secret_client.access_secret_version(resource_name)
     secrets = yaml.load(response.payload.data.decode('UTF-8'))
 
