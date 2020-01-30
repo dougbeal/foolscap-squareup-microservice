@@ -43,7 +43,7 @@ def foolscap_square_webhook(request):
                                       'square.change')
 
      # data must be a bytestring.
-    future = publisher.publish(topic_path, data="", origin="webhook")
+    future = publisher.publish(topic_path, data=None, origin="webhook")
     log.info("%s %s: %s", request, request.get_data(), future.result())
 
 def foolscap_tito_webhook(request):
