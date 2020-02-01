@@ -4,6 +4,7 @@ import logging
 
 
 from google.cloud import firestore
+
 import google.auth.credentials
 
 class Storage:
@@ -60,6 +61,41 @@ class FirestoreStorage(Storage):
         log.debug("document path %s", ref.path)
         return ref
 
+    @classmethod
+    async def get_service_value(cls, service, path):
+        log = logging.getLogger(__name__)
+
+        ref = ((await cls.base_collection())
+               .document(service))
+        log.debug("document path %s", ref.path)
+        snap = ref.get(field_paths=path)
+        if snap.exists and bool(snap.to_dict()):
+            return snap.get('.'.join(path))
+        return None
+
+    @classmethod
+    async def set_service_value(cls, service, path, value):
+        log = logging.getLogger(__name__)
+
+        ref = ((await cls.base_collection())
+               .document(service))
+        log.debug("document path %s", ref.path)
+        snap = ref.get()
+        if snap.exists:
+            return ref.update({cls.client.field_path(*path): value})
+        else:
+            return ref.set({cls.client.field_path(*path): value})
+
+
+    # foolscap-microservices/tito/
+    @classmethod
+    async def get_service_document_reference(cls, service):
+        log = logging.getLogger(__name__)
+
+        ref = ((await cls.base_collection())
+               .document(service))
+        log.debug("document path %s", ref.path)
+        return ref
 
     @classmethod
     async def get_event_collection_reference(cls, service, event):

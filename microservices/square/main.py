@@ -10,27 +10,29 @@ PRODUCTION = True
 secrets = None
 client = None
 
-def set_webhook(level=logging.WARNING):
+
+def loop(api_function, level):
     logging.basicConfig(level=level)
+    logging.getLogger().setLevel(level)
+    print( u"log level {} {}".format(level, logging.getLogger().getEffectiveLevel()) )
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(api.set_webhook(secrets=secrets, client=client))
+        loop.run_until_complete(api_function(secrets=secrets, client=client))
     except:
         if not PRODUCTION:
             import pdb, traceback
             traceback.print_exc()
             pdb.post_mortem()
 
+def set_webhook(level=logging.WARNING):
+    return loop(api.set_webhook, level)
+
+def get_membership_items(level=logging.WARNING):
+    return loop(api.get_membership_items, level)
+
 def get_registrations(level=logging.WARNING):
-    logging.basicConfig(level=level)
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(api.get_registrations(secrets=secrets, client=client))
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
+    return loop(api.get_registrations, level)
+
 
 if __name__ == '__main__':
     PRODUCTION = False
