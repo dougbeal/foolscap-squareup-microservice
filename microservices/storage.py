@@ -47,6 +47,10 @@ class FirestoreStorage(Storage):
     # collection(Storage.collection_name) document('tito') collection('events') document('2020')
 
     @classmethod
+    async def start_batch(cls):
+        return cls.client.batch()
+        
+    @classmethod
     async def base_collection(cls):
         ref = cls.client.collection(Storage.collection_name)
         return ref

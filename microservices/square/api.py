@@ -33,7 +33,7 @@ def active_events():
 
 def classify_item(name):
     for idx, year in enumerate(get_event_years()):
-        prefix = f"F{str(x%100).zfill(2)}"
+        prefix = f"F{str(year%100).zfill(2)}"
         if name.startswith(prefix):
             return active_events()[idx]
     return None
@@ -269,11 +269,20 @@ async def get_customer_details(secrets, client, customer_id):
             return None
     return None
 
-async def write_square_registration(order_id, j):
+async def write_square_registration(batch, order_id, j):
     log = logging.getLogger(__name__)
-    log.info("storage reg %s", j.get('customer_id'))
+    event = active_events()[0]
 
-    event = 'foolscap-2020'
+    # TODO: current assumption, all items are same foolscap
+    query = parse("$..line_items..name")
+    match = query.find(j)
+    log.debug("match %s", match[0].value)
+    for name in [m.value for m in match]:
+        c = classify_item(name)
+        if c:
+            event = c
+            break
+    log.info("storage reg %s event %s", j.get('customer_id'), event)
     if 'event' in j:
         event = j['event']['slug']
     key = order_id
@@ -282,7 +291,7 @@ async def write_square_registration(order_id, j):
     document_reference = col.document(key)
     if not document_reference.get().exists:
         log.debug("writing reg %s", j)
-        document_reference.create(j)
+        batch.create(document_reference, j)
     else:
         log.debug("reg exists %s", j)
 
@@ -294,10 +303,12 @@ async def get_registrations(secrets, client):
     log.debug( memberships )
     tasks = []
     # TODO: Batch firestore writes
+    batch = await storage.get_storage().start_batch()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for order_id, reg in memberships.items():
-            tasks.append(asyncio.create_task(write_square_registration(order_id, reg)))
+            tasks.append(asyncio.create_task(write_square_registration(batch, order_id, reg)))
     await asyncio.gather(*tasks)
+    batch.commit()
     return memberships
 
 async def get_locations(secrets, client):
