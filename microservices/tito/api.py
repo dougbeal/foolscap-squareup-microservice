@@ -566,7 +566,10 @@ async def delete_all_webhooks(secrets):
 
 
 async def get_webhooks(secrets):
-    return await get_tito_generic(secrets, 'webhook_endpoints')
+    log = logging.getLogger(__name__)
+    hooks = await get_tito_generic(secrets, 'webhook_endpoints')
+    log.debug(hooks)
+    return hooks
 
 async def set_webhooks(secrets):
     data = {

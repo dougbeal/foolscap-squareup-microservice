@@ -69,7 +69,6 @@ def dump_documents(level=logging.WARNING):
             pdb.post_mortem()
     return j
 
-
 def handle_exception(loop, context):
     if not PRODUCTION:
         log = logging.getLogger(__name__)
