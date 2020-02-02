@@ -50,7 +50,7 @@ def sync(level=logging.WARNING):
 
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(api.sync(secrets))
+        loop.run_until_complete(api.sync_active(secrets))
 
     except:
         if not PRODUCTION:

@@ -11,7 +11,7 @@ import requests
 import requests_cache
 
 from .. import storage
-
+from .. import event_year
 
 
 
@@ -70,7 +70,7 @@ def log_request(response):
                   )
         log.error("locals %s", locals())
     else:
-        log.info("%s: %s %s %s\n\t",
+        log.debug("%s: %s %s %s\n\t",
                  response.status_code, cache, response.request.method, response.request.url)
         log.debug("headers %s\n\t"
                   "json %s\n\t"
@@ -86,8 +86,8 @@ def log_request(response):
                   )
 
 
-async def get_tito_generic(secrets, name, params={}):
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
+async def get_tito_generic(secrets, name, event=EVENT_SLUG, params={}):
+    url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/{name}"
     headers = get_base_headers(secrets)
     resp = requests.get(url, headers=headers, params=params)
     log_request(resp)
@@ -232,7 +232,6 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
     square_names = None
-    log.info("notes %s", notes)
     # came from square, try to determine Badge Name from registration_name
     # syntax
     # badge-name: Badge Alpha
@@ -245,7 +244,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
     bite_tickets = [m.value for m in match if not is_membership_ticket(m.value['release_title'])]
     # membership tickets
     membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
-    log.info( "%s[%s]: %i membership tickets, %i non-membership tickets", registration_name, badge_number, len(membership_tickets), len(bite_tickets))
+
     for num, ticket in enumerate(membership_tickets):
         log.debug("membership ticket ticket %i %s", num, ticket)
         ticket_slug = ticket['slug']
@@ -302,8 +301,16 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
 
         # If anything is set in update, send changes via tito update ticket
         if bool(update):
+            log.info( "%s[%s]: %i membership tickets, %i non-membership tickets, notes %s",
+                registration_name, badge_number,
+                len(membership_tickets), len(bite_tickets),
+                notes)                        
             update['release_id'] = ticket['release_id']
-            log.info("update membership ticket[%s:%s] %s", ticket_slug, ticket['release_title'], pformat(update))
+            log.info("update membership ticket[%s:%s] %s",
+                     ticket_slug, ticket['release_title'],
+                     update
+                     )
+
             asyncio.create_task(put_tito_generic(secrets, f"tickets/{ticket_slug}", {'ticket':update}, operation=requests.patch))
             if len(bite_tickets):
                 update = update.copy()
@@ -346,28 +353,73 @@ async def mark_tito_registration_paid(secrets, registration_slug):
 #  "F20 Dealer's Space - Regular",
 #  'F20 Membership - Early Bird',
 #  'F20 Membership - Student/New'}
-DEALER_MEMBERSHIP = { "F20 Dealer's Space - Regular", "F20 Dealer's Table - Regular" }
+# DEALER_MEMBERSHIP = { "F20 Dealer's Space - Regular", "F20 Dealer's Table - Regular" }
 
-SQUARE_TITO_MAP = {
-    'F20 Banq - Regular': 'Bite of Foolscap Banquet',
-    "F20 Dealer's Space - Regular": 'Foolscap 2020 Membership - Dealer',
-    "F20 Dealer's Table - Regular": 'Foolscap 2020 Membership - Dealer',
-    'F20 Membership - Early Bird': 'Foolscap 2020 Membership - Early Bird',
-    'F20 Membership - Student/New': 'Foolscap 2020 Membership - Student or First Timer',
-    'F20 Membership - At con': 'Foolscap 2020 Membership',
-    'F20 Membership - Regular': 'Foolscap 2020 Membership'
-    }
+# SQUARE_TITO_MAP = {
+#     'F20 Banq - Regular': 'Bite of Foolscap Banquet',
+#     "F20 Dealer's Space - Regular": 'Foolscap 2020 Membership - Dealer',
+#     "F20 Dealer's Table - Regular": 'Foolscap 2020 Membership - Dealer',
+#     'F20 Membership - Early Bird': 'Foolscap 2020 Membership - Early Bird',
+#     'F20 Membership - Student/New': 'Foolscap 2020 Membership - Student or First Timer',
+#     'F20 Membership - At con': 'Foolscap 2020 Membership',
+#     'F20 Membership - Regular': 'Foolscap 2020 Membership'
+#     }
 
-async def sync(secrets):
+# cache while function is resident    
+TITO_RELEASE_NAMES = {}
+TITO_RELEASE_NAME_ID = {}
+
+async def get_tito_release_names(secrets, event):
+    if not event in TITO_RELEASE_NAMES:
+        log = logging.getLogger(__name__)
+        resp = await get_tito_generic(secrets, "releases", event=event)
+        query = parse('$.releases..title')
+        match = query.find(resp)
+        releases = [m.value for m in match]
+        query = parse('$.releases..id')
+        match = query.find(resp)
+        rel_ids = [m.value for m in match]        
+        log.info("tito %s releases %s", event, releases)
+        TITO_RELEASE_NAMES[event] = releases
+        TITO_RELEASE_NAME_ID[event] = dict(zip(releases, rel_ids))
+    return TITO_RELEASE_NAMES[event], TITO_RELEASE_NAME_ID[event]
+
+async def square_ticket_tito_name(secrets, event, name):
+    tito_releases, _ = await get_tito_release_names(secrets, event)
+    name_keywords = ['Banq', 'Dealer', 'Early', 'Student', 'Concom']
+    for keyword in name_keywords:
+        if keyword.lower() in name.lower():
+            for tito in tito_releases:
+                if keyword.lower() in tito.lower():
+                    return tito
+    if 'membership' in name.lower():
+        # exclude keywords
+        for keyword in name_keywords:
+            tito_releases = [t for t in tito_releases if not keyword in t]
+        return tito_releases[0]
+    return None
+
+
+
+async def sync_active(secrets):
+    events = event_year.active()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = pool.map(sync_event,
+                           [secrets for _ in events],
+                           events)
+    await asyncio.gather(*futures)
+        
+        
+
+async def sync_event(secrets, event):
     log = logging.getLogger(__name__)
-
-    get_release_task = asyncio.create_task(get_tito_generic(secrets, 'releases'))
-    log.info("reading registrations")
+    log.info("syncing event %s", event)
+    log.debug("reading registrations")
     j = await read_registrations()
     st = storage.get_storage()
 
-    tito_registrations = j[st.col0]['tito'][st.col1][EVENT_SLUG][st.col2]
-    square_registrations = j[st.col0]['square'][st.col1][EVENT_SLUG][st.col2]
+    tito_registrations = j[st.col0]['tito'][st.col1][event][st.col2]
+    square_registrations = j[st.col0]['square'][st.col1][event][st.col2]
 
     # TODO: filter out test or production tito entries
 
@@ -376,15 +428,17 @@ async def sync(secrets):
     find = query.find(tito_registrations)
     tito_sources = {m.value for m in find}
 
-    log.info( "square fields " + pformat(square_registrations[0]))
-    log.info( "tito fields " + pformat(tito_registrations[0]))
+    if square_registrations:
+        log.debug( "square fields " + pformat(square_registrations[0]))
+    if tito_registrations:
+        log.debug( "tito fields " + pformat(tito_registrations[0]))
 
     square_by_date = sorted(square_registrations, key=lambda reg: isoparse(reg['closed_at']))
 
     order_from_square_tito_add = []
     order_from_square = []
     order_dates = {}
-    releases = {}
+    releases, rel_ids  = await get_tito_release_names(secrets, event)
     for order in square_by_date:
         order_id = order['order_id']
         items = []
@@ -412,22 +466,17 @@ async def sync(secrets):
                 item_name = item_name + " - " + line_item['variation_name']
             quantity = int(line_item['quantity'])
 
-            if not item_name in SQUARE_TITO_MAP:
+            tito_name = await square_ticket_tito_name(secrets, event, item_name)
+            if not tito_name:
                 log.warning("item %s not in map.", item_name)
                 continue
 
-            tito_name = SQUARE_TITO_MAP[item_name]
-            if item_name in DEALER_MEMBERSHIP: # two badger per dealer space
+            if 'dealer' in item_name.lower(): # two badger per dealer space
                 quantity *= 2
+                log.debug('%i dealer badges created', quantity)
 
-            if not releases:
-                releases = {}
-                result = await get_release_task
-                for item in result['releases']:
-                    releases[item['title']] = item['id']
-                log.info("releases %s", pformat(releases))
             item = {
-                'release_id': releases[tito_name],
+                'release_id': rel_ids[tito_name],
                 'quantity': quantity
                 }
             tito['line_items'].append(item)
@@ -450,14 +499,18 @@ async def sync(secrets):
         order_dates[order_id] = order_date
 
 
-    log.info("reg count square %i tito %i", len(square_registrations), len(tito_registrations))
+    log.info("reg count square %i tito %i.  creating %i",
+             len(square_registrations),
+             len(tito_registrations),
+             len(order_from_square_tito_add)             
+             )
 
-    log.info("creating %i registrations", len(order_from_square_tito_add))
+    square_map = square_registration_order_map(square_registrations)    
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(create_tito_registration,
                            [secrets for _ in order_from_square_tito_add],
                            order_from_square_tito_add,
-                           [square_registrations[item['source']] for item in order_from_square_tito_add])
+                           [square_map[item['source']] for item in order_from_square_tito_add])
 
     registration_creation_results = await asyncio.gather(*futures)
     new_tito_registrations = [r['registration'] for r in registration_creation_results if 'registration' in r]
@@ -467,29 +520,23 @@ async def sync(secrets):
     #  'completed_at': '2019-12-22T22:16:16.000-08:00',
     #  filter Source: None
 
-    square_map = square_registration_order_map(square_registrations)
-    log.info("adding order_date for sorting")
+
+    log.debug("adding order_date for sorting")
     for reg in [*tito_registrations, *new_tito_registrations]:
-        if reg.get('source') is None:
+        source = reg['source']        
+        if source is None:
             reg['order_date'] = reg['completed_at']
         else:
-            source = reg['source']
             reg['order_date'] = order_dates[source]
             reg['square_data'] = square_map[source]
 
 
     sorted_by_date = sorted([*tito_registrations, *new_tito_registrations], key=lambda item: isoparse(item['order_date']))
-    log.info("sorted %s:", [order['name'] for order in sorted_by_date])
+    log.debug("sorted %s:", [order['name'] for order in sorted_by_date])
 
-
-    if not releases:
-        releases = {}
-        for item in get_release_task.result()['releases']:
-            releases[item['title']] = item['id']
-        log.info("releases %s", pformat(releases))
 
     # add badge numbers
-    log.info("adding badge numbers")
+    log.debug("adding badge numbers")
     badge_number = 2 # 1 is reserved
     tasks = []
     for registration in sorted_by_date:
@@ -498,9 +545,9 @@ async def sync(secrets):
         badge_number = badge_number + membership_count
 
     # wait for everything to complete before sync is done
-    log.info("await tasks")
+    log.debug("await tasks")
     await asyncio.gather(*tasks)
-    log.info("tasks done")
+    log.debug("tasks done")
 
 
 async def delete_all_webhooks(secrets):

@@ -13,42 +13,25 @@ from jsonpath_ng.ext import parse
 import requests
 
 from .. import storage
+from .. import event_year
 
-FOOLSCAP = "2020"
-FOOLSCAP_MEMBERSHIP = "F20 Membership"
-FOOLSCAP_CATEGORY = f"Foolscap {FOOLSCAP}"
-START_DATE = datetime(int(FOOLSCAP)-1, 1, 1) # tickets are sold at prev foolscap
-END_DATE = datetime(int(FOOLSCAP), 3, 1)
+# FOOLSCAP = "2020"
+# FOOLSCAP_MEMBERSHIP = "F20 Membership"
+# FOOLSCAP_CATEGORY = f"Foolscap {FOOLSCAP}"
+# START_DATE = datetime(int(FOOLSCAP)-1, 1, 1) # tickets are sold at prev foolscap
+# END_DATE = datetime(int(FOOLSCAP), 3, 1)
 
-def get_event_years():
-    current = datetime.now().year
-    return list(range(current, current+3))
-
-def active_events():
-    # in year 2019, active events could be:
-    #  foolscap-2019
-    #  foolscap-2020
-    #  foolscap-2021
-    return [f"foolscap-{year}" for year in get_event_years()]
-
-def classify_item(name):
-    for idx, year in enumerate(get_event_years()):
-        prefix = f"F{str(year%100).zfill(2)}"
-        if name.startswith(prefix):
-            return active_events()[idx]
-    return None
 
 async def get_last_update_date():
     log = logging.getLogger(__name__)
     lastdate = await get_value(['internals', 'updated'])
     if not lastdate:
-        year = get_event_years()[0]
-        lastdate = datetime(day=1, month=1, year=year)-timedelta(days=1)
+        lastdate = event_year.earliest_order_date()
     log.debug("last updated %s", lastdate)
     return lastdate
 
 async def get_future_date():
-    return datetime(day=1, month=1, year=get_event_years()[-1])+timedelta(days=1)
+    return datetime(day=1, month=1, year=event_year.years()[-1])+timedelta(days=1)
 
 async def set_update_date(now):
     log = logging.getLogger(__name__)
@@ -116,7 +99,6 @@ async def get_foolscap_categories(secrets, client):
 # "F20 ......"
 async def get_membership_items(secrets, client):
     log = logging.getLogger(__name__)
-    print( u"log level {} {}".format(log.getEffectiveLevel(), logging.getLogger().getEffectiveLevel()) )
 
     membership_item_names = {}
     locations = set()
@@ -179,39 +161,41 @@ async def get_membership_items(secrets, client):
 # /foolscap-microservices/square/
 async def get_membership_orders(secrets, client, membership_item_ids, locations):
     log = logging.getLogger(__name__)
-    log.info("searching for orders in locations %s", locations)
     start = await get_last_update_date()
     end = await get_future_date()
+
     now = datetime.now()
-    result = client.orders.search_orders(
-        body = {
-            "return_entries": False,
-            "limit": 500,
-            "location_ids": locations,
-            "query": {
-                "filter": {
-                    "date_time_filter": {
-                        "closed_at": {
-                            "start_at": start.isoformat(),
-                            "end_at": end.isoformat()
-                        }
-                    },
-                    "state_filter": {
-                        "states": [
-                            "COMPLETED"
-                        ]
+    body = {
+        "return_entries": False,
+        "limit": 500,
+        "location_ids": locations,
+        "query": {
+            "filter": {
+                "date_time_filter": {
+                    "closed_at": {
+                        "start_at": start.isoformat(),
+                        "end_at": end.isoformat()
                     }
                 },
-                "sort": {
-                    "sort_field": "CLOSED_AT",
-                    "sort_order": "DESC"
+                "state_filter": {
+                    "states": [
+                        "COMPLETED"
+                    ]
                 }
+            },
+            "sort": {
+                "sort_field": "CLOSED_AT",
+                "sort_order": "DESC"
             }
         }
-    )
+    }
+    log.debug("query %s", body)
+    result = client.orders.search_orders(body=body)
+
+    log.info("searching for orders in locations %s [%s, %s] body len %i",
+              locations, start, end, len(result.body))
 
     membership_orders = {}
-
     if result.is_success():
         log.debug("orders: %s", result.body)
         if 'orders' in result.body:
@@ -271,18 +255,22 @@ async def get_customer_details(secrets, client, customer_id):
 
 async def write_square_registration(batch, order_id, j):
     log = logging.getLogger(__name__)
-    event = active_events()[0]
+    event = event_year.active()[0]
 
     # TODO: current assumption, all items are same foolscap
     query = parse("$..line_items..name")
     match = query.find(j)
-    log.debug("match %s", match[0].value)
+
     for name in [m.value for m in match]:
-        c = classify_item(name)
+        c = event_year.square_item_year_prefix(name)
         if c:
             event = c
             break
-    log.info("storage reg %s event %s", j.get('customer_id'), event)
+    log.info("storage reg %s event %s item0 %s",
+             j.get('customer_id'),
+             event,
+             match[0].value)
+
     if 'event' in j:
         event = j['event']['slug']
     key = order_id
