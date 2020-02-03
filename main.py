@@ -156,4 +156,4 @@ def foolscap_firestore_registration_document_changed(data, context):
     log.info('Function triggered by change to: %s  %s', trigger_resource,
              json.dumps(data)
              )
-    asyncio.run(microservices.tito.sync_event(secrets, event))
+    asyncio.run(microservices.tito.api.sync_event(secrets, event))
