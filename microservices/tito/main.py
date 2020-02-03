@@ -77,7 +77,32 @@ def handle_exception(loop, context):
         log.error(f"Caught exception: {msg}")
 
 
+def create_requests_mock():
+    from unittest.mock import patch
+    from unittest.mock import Mock
+    from unittest.mock import MagicMock
 
+    requests_mock = MagicMock()
+    requests_mock.status_code = 200
+    requests_mock.json.return_value = {
+        "registrations": {"slug": "dryrun"}
+        }
+    return requests_mock
+
+def fire_mock():
+    import fire
+    from unittest.mock import patch
+    from unittest.mock import Mock
+    from unittest.mock import MagicMock
+
+    requests_mock = create_requests_mock()
+
+    @patch('requests.delete', requests_mock)
+    @patch('requests.post', requests_mock)
+    @patch('requests.patch', requests_mock)
+    def mocked_function():
+        return fire.Fire()
+    mocked_function()
 
 
 if __name__ == '__main__':
@@ -115,21 +140,7 @@ if __name__ == '__main__':
     if dry_run:
         print("running dry, with mocked requests.post, requests.patch, and requests.delete")
         print("TITO_MODE " + api.TITO_MODE)
-        from unittest.mock import patch
-        from unittest.mock import Mock
-        from unittest.mock import MagicMock
-
-        requests_mock = MagicMock()
-        requests_mock.status_code = 200
-        requests_mock.json.return_value = {
-            "registrations": {"slug": "dryrun"}
-            }
-        @patch('requests.delete', requests_mock)
-        @patch('requests.post', requests_mock)
-        @patch('requests.patch', requests_mock)
-        def mocked_function():
-            return fire.Fire()
-        mocked_function()
+        fire_mock()
     else:
         print("TITO_MODE " + api.TITO_MODE)
         fire.Fire()
