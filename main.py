@@ -145,12 +145,12 @@ def foolscap_firestore_registration_document_changed(data, context):
     trigger_resource = context.resource
     path_parts = context.resource.split('/documents/')[1].split('/')
     service = path_parts[1]
-    event = parth_parts[3]
+    event = path_parts[3]
     #           0               1      2        3           4              5
     # "foolscap-microservices/square/events/foolscap-2020/registrations/iFW3b8l2DZWQBmzqAtiMGvMF"
-    old_value = data['oldValue']
-    update_mask = data['updateMask']
-    new_value = data['value']
+    # old_value = data['oldValue']
+    # update_mask = data['updateMask']
+    # new_value = data['value']
 
     # call a sync
     log.info('Function triggered by change to: %s  %s' % trigger_resource,
