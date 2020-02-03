@@ -8,7 +8,6 @@ from dateutil.parser import isoparse
 from jsonpath_ng import jsonpath, Slice, Fields, Root
 from jsonpath_ng.ext import parse
 import requests
-import requests_cache
 
 from .. import storage
 from .. import event_year
@@ -157,10 +156,9 @@ def document_to_obj(doc_snapshot):
     log.debug("document %s %s", doc_snapshot.id, obj)
     return obj
 
-async def write_tito_registration(j):
+async def write_tito_registration(j, event=EVENT_SLUG):
     log = logging.getLogger(__name__)
     log.info("storage reg %s", j.get('name'))
-    event = EVENT_SLUG
     if 'event' in j:
         event = j['event']['slug']
     key = j['reference']
@@ -181,16 +179,19 @@ async def get_answers(secrets, question_slug):
     return response.json()
 
 async def get_registrations(secrets):
+    return await loop_over_events(secrets, get_registration_event)
+
+async def get_registration_event(secrets, event):
     log = logging.getLogger(__name__)
-    resp = await get_tito_generic(secrets, "registrations", params={ 'view': 'extended' })
+    resp = await get_tito_generic(secrets, "registrations", event=event, params={ 'view': 'extended' })
 
     registrations = resp['registrations']
-    log.info("storing %i registrations", len(registrations))
+    log.info("storing %s has %i registrations", event, len(registrations))
     tasks = []
     # TODO: Batch firestore writes
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for reg in registrations:
-            tasks.append(asyncio.create_task(write_tito_registration(reg)))
+            tasks.append(asyncio.create_task(write_tito_registration(reg, event=event)))
     await asyncio.gather(*tasks)
     return registrations
 
@@ -202,14 +203,15 @@ async def create_tito_registration(secrets, registration, square_data):
 
     query = Fields('registration')
     find = query.find(json_result)
-    assert(len(find)>0)
-    find = find[0]
-    log.debug(find)
+    if len(find)>0:
+        find = find[0]
+        log.debug(find)
 
-    registration_slug = find.value['slug']
-    asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
-    asyncio.create_task(update_tito_tickets(secrets, json_result, square_data))
-
+        registration_slug = find.value['slug']
+        asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
+        asyncio.create_task(update_tito_tickets(secrets, json_result, square_data))
+    else:
+        log.info("no registrations %s", json_result)
     return json_result
 
 
@@ -304,7 +306,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
             log.info( "%s[%s]: %i membership tickets, %i non-membership tickets, notes %s",
                 registration_name, badge_number,
                 len(membership_tickets), len(bite_tickets),
-                notes)                        
+                notes)
             update['release_id'] = ticket['release_id']
             log.info("update membership ticket[%s:%s] %s",
                      ticket_slug, ticket['release_title'],
@@ -365,7 +367,7 @@ async def mark_tito_registration_paid(secrets, registration_slug):
 #     'F20 Membership - Regular': 'Foolscap 2020 Membership'
 #     }
 
-# cache while function is resident    
+# cache while function is resident
 TITO_RELEASE_NAMES = {}
 TITO_RELEASE_NAME_ID = {}
 
@@ -378,7 +380,7 @@ async def get_tito_release_names(secrets, event):
         releases = [m.value for m in match]
         query = parse('$.releases..id')
         match = query.find(resp)
-        rel_ids = [m.value for m in match]        
+        rel_ids = [m.value for m in match]
         log.info("tito %s releases %s", event, releases)
         TITO_RELEASE_NAMES[event] = releases
         TITO_RELEASE_NAME_ID[event] = dict(zip(releases, rel_ids))
@@ -399,17 +401,16 @@ async def square_ticket_tito_name(secrets, event, name):
         return tito_releases[0]
     return None
 
-
-
-async def sync_active(secrets):
+async def loop_over_events(secrets, function):
     events = event_year.active()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = pool.map(sync_event,
+        futures = pool.map(function,
                            [secrets for _ in events],
                            events)
-    await asyncio.gather(*futures)
-        
-        
+    return await asyncio.gather(*futures)
+
+async def sync_active(secrets):
+    return await loop_over_events(secrets, sync_event)
 
 async def sync_event(secrets, event):
     log = logging.getLogger(__name__)
@@ -502,10 +503,10 @@ async def sync_event(secrets, event):
     log.info("reg count square %i tito %i.  creating %i",
              len(square_registrations),
              len(tito_registrations),
-             len(order_from_square_tito_add)             
+             len(order_from_square_tito_add)
              )
 
-    square_map = square_registration_order_map(square_registrations)    
+    square_map = square_registration_order_map(square_registrations)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(create_tito_registration,
                            [secrets for _ in order_from_square_tito_add],
@@ -523,7 +524,7 @@ async def sync_event(secrets, event):
 
     log.debug("adding order_date for sorting")
     for reg in [*tito_registrations, *new_tito_registrations]:
-        source = reg['source']        
+        source = reg['source']
         if source is None:
             reg['order_date'] = reg['completed_at']
         else:
