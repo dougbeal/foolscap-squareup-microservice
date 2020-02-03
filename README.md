@@ -121,6 +121,7 @@ curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_N
 deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
 
 deploy_pubsub_function foolscap_pubsub_topic_square_change square.change
+deploy_pubsub_function foolscap_pubsub_topic_bootstrap bootstrap
   
 ```
 
