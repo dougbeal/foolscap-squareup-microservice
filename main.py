@@ -15,6 +15,7 @@ except ImportError:
 import microservices.square.api
 import microservices.tito.api
 import microservices.api
+import microservices.event_year
 
 secrets = {}
 project_id = "foolscap-microservices"
@@ -151,7 +152,8 @@ def foolscap_firestore_registration_document_changed(data, context):
     # old_value = data['oldValue']
     # update_mask = data['updateMask']
     # new_value = data['value']
-
+    if event == '{event}': # testing situation. default to current
+        event = microservices.event_year.active()[0]
     # call a sync
     log.info('Function triggered by change to: %s  %s', trigger_resource,
              json.dumps(data)
