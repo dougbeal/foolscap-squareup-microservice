@@ -18,6 +18,13 @@ import microservices.api
 import microservices.event_year
 
 secrets = {}
+logging_client = None
+pubsub_client = None
+square_client = None
+secret_client = None
+secrets = None
+secret_name = "secrets"
+
 project_id = "foolscap-microservices"
 
 if os.getenv('GCP_PROJECT', ''):
@@ -31,31 +38,44 @@ if os.getenv('GCP_PROJECT', ''):
     # all logs at INFO level and higher
     logging_client.setup_logging()
 
-    secret_client = secretmanager.SecretManagerServiceClient()
-    secret_name = "secrets"
-
-    resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-    response = secret_client.access_secret_version(resource_name)
-    secrets = yaml.load(response.payload.data.decode('UTF-8'), Loader=Loader)
-
 # must be imported after google.cloud.logging
 import logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
 
+
+def setup_resources():
+    global pubsub_client, square_client, secret_client, secrets
+    if not pubsub_client:
+        pubsub_client = pubsub_v1.PublisherClient()
+
+    if not secret_client:
+        secret_client = secretmanager.SecretManagerServiceClient()
+    if not secrets:
+        resource_name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = secret_client.access_secret_version(resource_name)
+        secrets = yaml.load(response.payload.data.decode('UTF-8'), Loader=Loader)
+    if not square_client:
+        square_client = square.client.Client(
+            access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],
+            environment='production' )
+
 def foolscap_square_webhook(request):
+    setup_resources()
 
     # TODO project_id = "Your Google Cloud Project ID"
     # TODO topic_name = "Your Pub/Sub topic name"
-
-    publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(project_id,
+    topic_path = pubsub_client.topic_path(project_id,
                                       'square.change')
 
      # data must be a bytestring.
     data = "foolscap_square_webhook".encode("utf-8")
-    future = publisher.publish(topic_path, data=data, origin="webhook")
-    log.info("%s %s: %s", request, request.get_data(), future.result())
+    future = pubsub_client.publish(topic_path, data=data, origin="webhook")
+    logging_client.log_struct( {
+        'topic_path': topic_path,
+        'request': request,
+        'request.data': request.get_data(),
+        'future.result': future.result() } )
 
 def foolscap_tito_webhook(request):
     """HTTP Cloud Function.
@@ -65,13 +85,17 @@ def foolscap_tito_webhook(request):
     Returns:
         <http://flask.pocoo.org/docs/1.0/api/#flask.Flask.make_response>.
     """
+    setup_resources()
 
     request_json = request.get_json(silent=True)
     request_args = request.args
     text = request_json['text']
     event = request_json['event']['slug']
 
-    log.info("%s %s:%s %s", request, event, text, request.get_data())
+    logging_client.log_struct( {
+        'request': request,
+        'requestjson': request_json } )
+
     asyncio.run(microservices.tito.api.write_tito_registration(request_json))
 
 def foolscap_pubsub_topic_square_change(event, context):
@@ -84,14 +108,17 @@ def foolscap_pubsub_topic_square_change(event, context):
          metadata. The `event_id` field contains the Pub/Sub message ID. The
          `timestamp` field contains the publish time.
     """
-    import base64
+    setup_resources()
 
-    client = square.client.Client( access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],
-                                  environment='production' )
-    registrations = asyncio.run(microservices.square.api.get_registrations(secrets, client))
 
-    log.info("""This Function was triggered by messageId {} published at {}.  Square registrations {}
-    """.format(context.event_id, context.timestamp, registrations))
+
+    registrations = asyncio.run(microservices.square.api.get_registrations(secrets, square_client))
+
+    logging_client.log_struct( {
+        'event': event,
+        'conntext': context,
+        'registrations': registrations } )
+
 
 # pubsub template
 # def foolscap_pubsub_topic_xxx(event, context):
@@ -124,11 +151,12 @@ def foolscap_pubsub_topic_square_change(event, context):
 
 
 def foolscap_pubsub_topic_bootstrap(event, context):
-    log.info("""bootstrap was triggered by messageId {} published at {}
-    """.format(context.event_id, context.timestamp))
-    client = square.client.Client( access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],
-                                  environment='production' )
-    asyncio.run(microservices.api.bootstrap(secrets, client))
+    setup_resources()
+    logging_client.log_struct( {
+        'event': event,
+        'conntext': context })
+
+    asyncio.run(microservices.api.bootstrap(secrets, square_client))
 
 
 # https://cloud.google.com/functions/docs/calling/cloud-firestore
@@ -143,6 +171,7 @@ def foolscap_firestore_registration_document_changed(data, context):
         data (dict): The event payload.
         context (google.cloud.functions.Context): Metadata for the event.
     """
+    setup_resources()
     trigger_resource = context.resource
     path_parts = context.resource.split('/documents/')[1].split('/')
     service = path_parts[1]
@@ -155,7 +184,9 @@ def foolscap_firestore_registration_document_changed(data, context):
     if event == '{event}': # testing situation. default to current
         event = microservices.event_year.active()[0]
     # call a sync
-    log.info('Function triggered by change to: %s  %s', trigger_resource,
-             json.dumps(data)
-             )
+    logging_client.log_struct({
+        'trigger_resource': trigger_resource,
+        'data': data,
+        'context': context })
+
     asyncio.run(microservices.tito.api.sync_event(secrets, event))
