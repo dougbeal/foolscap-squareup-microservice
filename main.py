@@ -13,6 +13,8 @@ except ImportError:
     from yaml import Loader
 
 import microservices.square.api
+import microservices.tito.api
+import microservices.api
 
 secrets = {}
 project_id = "foolscap-microservices"
@@ -62,12 +64,14 @@ def foolscap_tito_webhook(request):
     Returns:
         <http://flask.pocoo.org/docs/1.0/api/#flask.Flask.make_response>.
     """
-    log.info("%s %s", request, request.get_data())
+
     request_json = request.get_json(silent=True)
     request_args = request.args
+    text = request_json['text']
+    event = request_json['event']['slug']
 
-    if '_type' in request_json and request_json['_type'] == 'registration':
-        asyncio.run(api.write_tito_registration(request_json))
+    log.info("%s %s:%s %s", request, event, text, request.get_data())
+    asyncio.run(microservices.tito.api.write_tito_registration(request_json))
 
 def foolscap_pubsub_topic_square_change(event, context):
     """Background Cloud Function to be triggered by Pub/Sub.
@@ -116,9 +120,22 @@ def foolscap_pubsub_topic_square_change(event, context):
 #  --runtime RUNTIME
 #  --trigger-event providers/cloud.firestore/eventTypes/document.write \
 #  --trigger-resource projects/YOUR_PROJECT_ID/databases/(default)/documents/messages/{pushId}
-    
 
-# https://cloud.google.com/functions/docs/calling/cloud-firestore    
+
+def foolscap_pubsub_topic_bootstrap(event, context):
+    log.info("""bootstrap was triggered by messageId {} published at {}
+    """.format(context.event_id, context.timestamp))
+    client = square.client.Client( access_token=secrets['metadata']['data']['square']['production']['SQUARE_ACCESS_TOKEN'],
+                                  environment='production' )
+    asyncio.run(microservices.api.bootstrap(secrets, client))
+
+
+# https://cloud.google.com/functions/docs/calling/cloud-firestore
+# gcloud functions deploy FUNCTION_NAME \
+#  --runtime RUNTIME
+#  --trigger-event providers/cloud.firestore/eventTypes/document.write \
+#  --trigger-resource projects/YOUR_PROJECT_ID/databases/(default)/documents/messages/{pushId}
+# https://cloud.google.com/functions/docs/calling/cloud-firestore
 def foolscap_firestore_registration_document_changed(data, context):
     """ Triggered by a change to a Firestore document.
     Args:
@@ -139,3 +156,4 @@ def foolscap_firestore_registration_document_changed(data, context):
     log.info('Function triggered by change to: %s  %s' % trigger_resource,
              json.dumps(data)
              )
+    asyncio.run(microservices.tito.sync_event(secrets, event))
