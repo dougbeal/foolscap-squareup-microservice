@@ -143,7 +143,7 @@ def foolscap_firestore_registration_document_changed(data, context):
         context (google.cloud.functions.Context): Metadata for the event.
     """
     trigger_resource = context.resource
-    parth_parts = context.resource.split('/documents/')[1].split('/')
+    path_parts = context.resource.split('/documents/')[1].split('/')
     service = path_parts[1]
     event = parth_parts[3]
     #           0               1      2        3           4              5
