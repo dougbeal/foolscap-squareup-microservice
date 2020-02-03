@@ -85,7 +85,7 @@ def log_request(response):
                   )
 
 
-async def get_tito_generic(secrets, name, event=EVENT_SLUG, params={}):
+async def get_tito_generic(secrets, name, event, params={}):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/{name}"
     headers = get_base_headers(secrets)
     resp = requests.get(url, headers=headers, params=params)
@@ -93,10 +93,11 @@ async def get_tito_generic(secrets, name, event=EVENT_SLUG, params={}):
     json_result = resp.json()
     return json_result
 
-async def put_tito_generic(secrets, name, json=None, operation=None):
+async def put_tito_generic(secrets, event, name, json=None, operation=None):
+    log = logging.getLogger(__name__)
     if not operation:
         operation = requests.post
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/{name}"
+    url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/{name}"
     headers = get_write_headers(secrets)
 
     resp = None
@@ -105,6 +106,8 @@ async def put_tito_generic(secrets, name, json=None, operation=None):
     else:
         resp = operation(url, headers=headers)
 
+    log.debug("put_tito_generic %s/%s event %s name %s json %s",
+              operation, url, event, name, json)
     log_request(resp)
     resp.raise_for_status()
     if resp.text:
@@ -183,7 +186,7 @@ async def get_registrations(secrets):
 
 async def get_registration_event(secrets, event):
     log = logging.getLogger(__name__)
-    resp = await get_tito_generic(secrets, "registrations", event=event, params={ 'view': 'extended' })
+    resp = await get_tito_generic(secrets, "registrations", event, params={ 'view': 'extended' })
 
     registrations = resp['registrations']
     log.info("storing %s has %i registrations", event, len(registrations))
@@ -196,10 +199,14 @@ async def get_registration_event(secrets, event):
     return registrations
 
 
-async def create_tito_registration(secrets, registration, square_data):
+async def create_tito_registration(secrets, event, registration, square_data):
     log = logging.getLogger(__name__)
 
-    json_result = await put_tito_generic(secrets, 'registrations', json={'registration': registration})
+    json_result = await put_tito_generic(
+        secrets,
+        event,
+        'registrations',
+        json={'registration': registration})
 
     query = Fields('registration')
     find = query.find(json_result)
@@ -208,8 +215,15 @@ async def create_tito_registration(secrets, registration, square_data):
         log.debug(find)
 
         registration_slug = find.value['slug']
-        asyncio.create_task(put_tito_generic(secrets, f"registrations/{registration_slug}/confirmations", {}))
-        asyncio.create_task(update_tito_tickets(secrets, json_result, square_data))
+        asyncio.create_task(put_tito_generic(
+            secrets,
+            event,
+            f"registrations/{registration_slug}/confirmations"))
+        asyncio.create_task(update_tito_tickets(
+            secrets,
+            event,
+            json_result,
+            square_data))
     else:
         log.info("no registrations %s", json_result)
     return json_result
@@ -225,7 +239,7 @@ def square_registration_order_map(square_registrations):
 def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
 
-async def update_tito_tickets(secrets, registration, square_data, badge_number=None):
+async def update_tito_tickets(secrets, event, registration, square_data, badge_number=None):
     log = logging.getLogger(__name__)
 
     log.debug("tito reg %s", registration)
@@ -254,7 +268,7 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
         if not 'responses' in ticket:
             # need to load extended ticket
             log.debug("loading extended ticket {ticket_slug}")
-            ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}")
+            ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}", event)
         else:
             log.debug("ticket has responses")
 
@@ -313,14 +327,25 @@ async def update_tito_tickets(secrets, registration, square_data, badge_number=N
                      update
                      )
 
-            asyncio.create_task(put_tito_generic(secrets, f"tickets/{ticket_slug}", {'ticket':update}, operation=requests.patch))
+            asyncio.create_task(put_tito_generic(
+                secrets,
+                event,
+                f"tickets/{ticket_slug}",
+                json={'ticket':update},
+                operation=requests.patch))
+
             if len(bite_tickets):
                 update = update.copy()
                 bite = bite_tickets.pop()
                 bite_ticket_slug = bite['slug']
                 update['release_id'] = bite['release_id']
                 log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))
-                asyncio.create_task(put_tito_generic(secrets, f"tickets/{bite_ticket_slug}", {"ticket":update}, operation=requests.patch))
+                asyncio.create_task(put_tito_generic(
+                    secrets,
+                    event,
+                    f"tickets/{bite_ticket_slug}",
+                    json={"ticket":update},
+                    operation=requests.patch))
         else:
             log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
 
@@ -374,7 +399,7 @@ TITO_RELEASE_NAME_ID = {}
 async def get_tito_release_names(secrets, event):
     if not event in TITO_RELEASE_NAMES:
         log = logging.getLogger(__name__)
-        resp = await get_tito_generic(secrets, "releases", event=event)
+        resp = await get_tito_generic(secrets, "releases", event)
         query = parse('$.releases..title')
         match = query.find(resp)
         releases = [m.value for m in match]
@@ -510,6 +535,7 @@ async def sync_event(secrets, event):
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = pool.map(create_tito_registration,
                            [secrets for _ in order_from_square_tito_add],
+                           [event for _ in order_from_square_tito_add],
                            order_from_square_tito_add,
                            [square_map[item['source']] for item in order_from_square_tito_add])
 
@@ -542,7 +568,12 @@ async def sync_event(secrets, event):
     tasks = []
     for registration in sorted_by_date:
         membership_count = len([ 0 for ticket in registration['tickets'] if not ticket['release_title'] == 'Bite of Foolscap Banquet'])
-        tasks.append(asyncio.create_task(update_tito_tickets(secrets, registration, registration.get('square_data', {}), badge_number=badge_number)))
+        tasks.append(asyncio.create_task(update_tito_tickets(
+            secrets,
+            event,
+            registration,
+            registration.get('square_data',{}),
+            badge_number=badge_number)))
         badge_number = badge_number + membership_count
 
     # wait for everything to complete before sync is done
