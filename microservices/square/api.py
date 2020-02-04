@@ -301,7 +301,7 @@ async def get_registrations(secrets, client):
             tasks.append(asyncio.create_task(write_square_registration(batch, order_id, reg)))
     log_structs = await asyncio.gather(*tasks)
     batch.commit()
-    logger.log_struct(log_structs)
+    logger.log_struct({"registrations":log_structs})
     return memberships
 
 async def get_locations(secrets, client):
