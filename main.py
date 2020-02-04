@@ -104,7 +104,7 @@ def foolscap_pubsub_topic_square_change(event, context):
 
     logger.log_struct( {
         'event': event,
-        'conntext': context,
+        'conntext': context.__dict__,
         'registrations': registrations } )
 
 
@@ -141,7 +141,7 @@ def foolscap_pubsub_topic_square_change(event, context):
 def foolscap_pubsub_topic_bootstrap(event, context):
     setup_resources()
     logger.log_struct( {
-        'event': event.__dict__,
+        'event': event,
         'conntext': context.__dict__ })
 
     asyncio.run(microservices.api.bootstrap(secrets, square_client))
@@ -174,7 +174,7 @@ def foolscap_firestore_registration_document_changed(data, context):
     # call a sync
     logger.log_struct({
         'trigger_resource': trigger_resource,
-        'data': data.__dict__,
+        'data': data,
         'context': context.__dict__ })
 
     asyncio.run(microservices.tito.api.sync_event(secrets, event))
