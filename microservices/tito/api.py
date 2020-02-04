@@ -52,21 +52,19 @@ def get_write_headers(secrets):
 
 
 def log_request(response):
-    cache = ""
-    if hasattr(response, 'from_cache'):
-        if response.from_cache:
-            cache = '[CACHE]'
     st = {
             "response.status_code":response.status_code,
-            "cache":cache,
             "response.request.method":response.request.method,
             "response.request.url":response.request.url,
             "response.request.headers":dict(response.request.headers),
             "response.request.body":response.request.body,
-            "response": { k : v for k, v in response.__dict__.items() if isinstance(v, str)},
-            "response.headers":dict(response.headers),
-            "response.text":response.text
-         }            
+            #"response": { k : v for k, v in response.__dict__.items() if isinstance(v, str)},
+            "response.headers":dict(response.headers)
+
+         }
+    if len(response.text) < 10000:
+        st["response.text"] = response.text
+
     if response.status_code == 404 or response.status_code == 422:
         logger.log_struct(st, severity='ERROR')
     else:
