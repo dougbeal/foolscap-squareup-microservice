@@ -61,7 +61,7 @@ def foolscap_square_webhook(request):
     future = pubsub_client.publish(topic_path, data=data, origin="webhook")
     logger.log_struct( {
         'topic_path': topic_path,
-        'request': request,
+        'request': request.__dict__,
         'request.data': request.get_data(),
         'future.result': future.result() } )
 
@@ -84,7 +84,7 @@ def foolscap_tito_webhook(request):
 
     log = asyncio.run(microservices.tito.api.write_tito_registration(request_json))
     logger.log_struct( {
-        'request': request,
+        'request': request.__dict__,
         'requestjson': request_json,
         'registrations': log} )
 
@@ -141,8 +141,8 @@ def foolscap_pubsub_topic_square_change(event, context):
 def foolscap_pubsub_topic_bootstrap(event, context):
     setup_resources()
     logger.log_struct( {
-        'event': event,
-        'conntext': context })
+        'event': event.__dict__,
+        'conntext': context.__dict__ })
 
     asyncio.run(microservices.api.bootstrap(secrets, square_client))
 
@@ -174,7 +174,7 @@ def foolscap_firestore_registration_document_changed(data, context):
     # call a sync
     logger.log_struct({
         'trigger_resource': trigger_resource,
-        'data': data,
-        'context': context })
+        'data': data.__dict__,
+        'context': context.__dict__ })
 
     asyncio.run(microservices.tito.api.sync_event(secrets, event))
