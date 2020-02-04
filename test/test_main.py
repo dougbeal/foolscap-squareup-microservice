@@ -121,7 +121,7 @@ class TestTito(unittest.TestCase):
                 patch=create_requests_mock('requests.patch'),
                 get=create_requests_mock('requests.get'))
     @async_test
-    async def test_get_tito_generic(self, logging, query, storage, *mocks):
+    async def test_get_tito_generic(self, logging, query, *mocks):
         secrets = MagicMock(name='secret')
         name = 'name'
         event = 'event-2222'
@@ -134,3 +134,10 @@ class TestTito(unittest.TestCase):
             params )
 
         microservices.tito.api.logger.log_struct.assert_called()
+
+    @async_test
+    async def test_get_tito_generic_logging():
+        from microservices import development_config as config
+        secrets = config.secrets
+        foo = await microservices.tito.api.get_tito_generic(
+            secrets, 'webhooks', 'foolscap-2020')

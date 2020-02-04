@@ -56,36 +56,21 @@ def log_request(response):
     if hasattr(response, 'from_cache'):
         if response.from_cache:
             cache = '[CACHE]'
+    st = {
+            "response.status_code":response.status_code,
+            "cache":cache,
+            "response.request.method":response.request.method,
+            "response.request.url":response.request.url,
+            "response.request.headers":dict(response.request.headers),
+            "response.request.body":response.request.body,
+            "response": { k : v for k, v in response.__dict__.items() if isinstance(v, str)},
+            "response.headers":dict(response.headers),
+            "response.text":response.text
+         }            
     if response.status_code == 404 or response.status_code == 422:
-        logger.log_struct(
-            {
-                "response.status_code":response.status_code,
-                "cache":cache,
-                "response.request.method":response.request.method,
-                "response.request.url":response.request.url,
-                "response.request.headers":response.request.headers,
-                "response.request.body":response.request.body,
-                "response":response,
-                "response.headers":response.headers,
-                "response.text":response.text,
-                "locals": locals()
-             },
-            severity='ERROR')
+        logger.log_struct(st, severity='ERROR')
     else:
-        logger.log_struct(
-            {
-                "response.status_code":response.status_code,
-                "cache":cache,
-                "response.request.url":response.request.url,
-                "response.request.headers":response.request.headers,
-                "response.request.body":response.request.body,
-                "response":response,
-                "response.request":response.request,
-                "response.headers":response.headers,
-                "response.text":response.text,
-                "locals": locals()
-             },
-            severity='DEBUG')
+        logger.log_struct(st, severity='DEBUG')
 
 
 async def get_tito_generic(secrets, name, event, params={}):
