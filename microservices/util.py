@@ -1,4 +1,7 @@
 import os
+from functools import wraps
+import json
+from google.protobuf.json_format import ParseError
 
 def create_requests_mock(op):
     from unittest.mock import patch
@@ -20,6 +23,22 @@ def create_requests_mock(op):
     return mock
 
 logger = None
+
+def flatten_item(item):
+    # if hasattr(item, '__dict__'):
+    #     return item.__dict__
+    return str(item)
+
+def log_struct_flatten(f):
+    @wraps(f)
+    def wrapper(*args, **kw):
+        try:
+            return f(*args, **kw)
+        except google.protobuf.json_format.ParseError:
+            struct = json.loads(json.dumps(args[0], default=flatten_item))
+            return f(*[struct, *args[1:]], **kw)
+    return wrapper
+
 if os.getenv('GCP_PROJECT', ''):
     import google.cloud.logging
     from google.cloud import firestore
@@ -31,6 +50,7 @@ if os.getenv('GCP_PROJECT', ''):
     # all logs at INFO level and higher
     logging_client.setup_logging()
     logger = logging_client.logger(__name__)
+    logger.log_struct = log_struct_flatten(logger.log_struct)
 else:
     # must be imported after google.cloud.logging
     import logging
@@ -48,7 +68,7 @@ else:
 
     logger.log_text = log_text.__get__(logger)
     def log_struct(self, info, **kw):
-        logger.log_text(pformat(info), **kw)    
+        logger.log_text(pformat(info), **kw)
 
     logger.log_struct = log_struct.__get__(logger)
 

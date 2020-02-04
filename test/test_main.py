@@ -7,6 +7,7 @@ import asyncio
 import json
 import tracemalloc
 import unittest
+import requests
 
 import main
 import microservices.square.api
@@ -104,6 +105,27 @@ class TestSquare(unittest.TestCase):
 
 class TestTito(unittest.TestCase):
     def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+class TestTitoRealLogging(TestTito):
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+    
+    @async_test
+    async def test_get_tito_generic_logging():
+        from microservices import development_config as config
+        secrets = config.secrets
+        foo = await microservices.tito.api.get_tito_generic(
+            secrets, 'webhooks', 'foolscap-2020')    
+
+class TestTitoMockLogging(TestTito):
+    def setUp(self):
         main.logging_client = MagicMock(name='logging_client')
         main.logger = MagicMock(name='main.logger')
         microservices.tito.api.logger = MagicMock(name='logger')
@@ -135,9 +157,38 @@ class TestTito(unittest.TestCase):
 
         microservices.tito.api.logger.log_struct.assert_called()
 
+
+
+mock_read_registrations = AsyncMock(
+    spec=microservices.tito.api.read_registrations,
+    return_value={ 'value'
+                   } )
+
+def get_tito_generic(secrets, name, event, params={}):
+    if 'name' == 'releases':
+        return ''
+
+    return ''
+
+mock_get_tito_generic = AsyncMock(
+    spec=microservices.tito.api.get_tito_generic,
+    side_effect=get_tito_generic
+    )
+
+@patch('requests.delete', create_requests_mock(requests.delete))
+@patch('requests.post', create_requests_mock(requests.delete))
+@patch('requests.patch', create_requests_mock(requests.delete))
+class RegistrationTestTito(TestTito):
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    @patch('microservices.tito.api.read_registrations',
+           mock=mock_read_registrations)
     @async_test
-    async def test_get_tito_generic_logging():
+    async def test_sync_event(self, *mock):
         from microservices import development_config as config
         secrets = config.secrets
-        foo = await microservices.tito.api.get_tito_generic(
-            secrets, 'webhooks', 'foolscap-2020')
+        foo = await microservices.tito.api.sync_active(secrets)
