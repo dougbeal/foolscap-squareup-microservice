@@ -155,7 +155,7 @@ async def get_membership_items(secrets, client):
 
     logger.log_struct(
         { "membership_item_names": membership_item_names,
-         "item locations": locations},
+         "item locations": list(locations)},
         severity='DEBUG' )
     return membership_item_names, locations
 
