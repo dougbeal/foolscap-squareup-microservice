@@ -2,7 +2,7 @@
 # setup, local development
 ```
 brew install python3 
-python3 -m venv .  # create virtual environment
+python3.8 -m venv .  # create virtual environment
 source bin/activate
 pip install -r requirements_dev.txt
 ```
@@ -111,17 +111,16 @@ function deploy_pubsub_function {
 }
 ```
 ```
-deploy_http_function foolscap_square_webhook
-deploy_http_function foolscap_tito_webhook
+(deploy_http_function foolscap_square_webhook)&
+(deploy_http_function foolscap_tito_webhook)&
 
-# test
-curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+
   
 
-deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}"
+(deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}")&
 
-deploy_pubsub_function foolscap_pubsub_topic_square_change square.change
-deploy_pubsub_function foolscap_pubsub_topic_bootstrap bootstrap
+(deploy_pubsub_function foolscap_pubsub_topic_square_change square.change)&
+(deploy_pubsub_function foolscap_pubsub_topic_bootstrap bootstrap)&
   
 ```
 
@@ -219,5 +218,12 @@ gcloud beta secrets add-iam-policy-binding secrets \
 ```
 
 
+# Testing
+```
+python -m unittest discover test
+nose2 --debugger test.test_main.TestTito
+# test
+curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+```
 
 TODO: rename repo to foolscap-microservices

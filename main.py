@@ -12,10 +12,7 @@ try:
 except ImportError:
     from yaml import Loader
 
-import microservices.square.api
-import microservices.tito.api
-import microservices.api
-import microservices.event_year
+
 
 secrets = {}
 logging_client = None
@@ -27,22 +24,13 @@ secret_name = "secrets"
 
 project_id = "foolscap-microservices"
 
-if os.getenv('GCP_PROJECT', ''):
-    import google.cloud.logging
-    from google.cloud import firestore
+import microservices
+logger = microservices.logger
 
-    # Instantiates a client
-    logging_client = google.cloud.logging.Client()
-
-    # Connects the logger to the root logging handler; by default this captures
-    # all logs at INFO level and higher
-    logging_client.setup_logging()
-
-# must be imported after google.cloud.logging
-import logging
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger()
-
+import microservices.square.api
+import microservices.tito.api
+import microservices.api
+import microservices.event_year
 
 def setup_resources():
     global pubsub_client, square_client, secret_client, secrets
@@ -71,7 +59,7 @@ def foolscap_square_webhook(request):
      # data must be a bytestring.
     data = "foolscap_square_webhook".encode("utf-8")
     future = pubsub_client.publish(topic_path, data=data, origin="webhook")
-    logging_client.log_struct( {
+    logger.log_struct( {
         'topic_path': topic_path,
         'request': request,
         'request.data': request.get_data(),
@@ -92,11 +80,13 @@ def foolscap_tito_webhook(request):
     text = request_json['text']
     event = request_json['event']['slug']
 
-    logging_client.log_struct( {
-        'request': request,
-        'requestjson': request_json } )
 
-    asyncio.run(microservices.tito.api.write_tito_registration(request_json))
+
+    log = asyncio.run(microservices.tito.api.write_tito_registration(request_json))
+    logger.log_struct( {
+        'request': request,
+        'requestjson': request_json,
+        'registrations': log} )
 
 def foolscap_pubsub_topic_square_change(event, context):
     """Background Cloud Function to be triggered by Pub/Sub.
@@ -110,11 +100,9 @@ def foolscap_pubsub_topic_square_change(event, context):
     """
     setup_resources()
 
-
-
     registrations = asyncio.run(microservices.square.api.get_registrations(secrets, square_client))
 
-    logging_client.log_struct( {
+    logger.log_struct( {
         'event': event,
         'conntext': context,
         'registrations': registrations } )
@@ -152,7 +140,7 @@ def foolscap_pubsub_topic_square_change(event, context):
 
 def foolscap_pubsub_topic_bootstrap(event, context):
     setup_resources()
-    logging_client.log_struct( {
+    logger.log_struct( {
         'event': event,
         'conntext': context })
 
@@ -184,7 +172,7 @@ def foolscap_firestore_registration_document_changed(data, context):
     if event == '{event}': # testing situation. default to current
         event = microservices.event_year.active()[0]
     # call a sync
-    logging_client.log_struct({
+    logger.log_struct({
         'trigger_resource': trigger_resource,
         'data': data,
         'context': context })

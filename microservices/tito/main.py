@@ -77,29 +77,18 @@ def handle_exception(loop, context):
         log.error(f"Caught exception: {msg}")
 
 
-def create_requests_mock():
-    from unittest.mock import patch
-    from unittest.mock import Mock
-    from unittest.mock import MagicMock
 
-    requests_mock = MagicMock()
-    requests_mock.status_code = 200
-    requests_mock.json.return_value = {
-        "registrations": {"slug": "dryrun"}
-        }
-    return requests_mock
 
 def fire_mock():
     import fire
+    import requests
     from unittest.mock import patch
     from unittest.mock import Mock
     from unittest.mock import MagicMock
 
-    requests_mock = create_requests_mock()
-
-    @patch('requests.delete', requests_mock)
-    @patch('requests.post', requests_mock)
-    @patch('requests.patch', requests_mock)
+    @patch('requests.delete', create_requests_mock(requests.delete))
+    @patch('requests.post', create_requests_mock(requests.delete))
+    @patch('requests.patch', create_requests_mock(requests.delete))
     def mocked_function():
         return fire.Fire()
     mocked_function()

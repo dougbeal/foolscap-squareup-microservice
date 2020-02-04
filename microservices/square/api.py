@@ -15,6 +15,10 @@ import requests
 from .. import storage
 from .. import event_year
 
+import microservices
+
+logger = microservices.logger
+
 # FOOLSCAP = "2020"
 # FOOLSCAP_MEMBERSHIP = "F20 Membership"
 # FOOLSCAP_CATEGORY = f"Foolscap {FOOLSCAP}"
@@ -98,8 +102,6 @@ async def get_foolscap_categories(secrets, client):
 # assume they are named starting with a F:
 # "F20 ......"
 async def get_membership_items(secrets, client):
-    log = logging.getLogger(__name__)
-
     membership_item_names = {}
     locations = set()
     result = client.catalog.search_catalog_objects(
@@ -122,7 +124,6 @@ async def get_membership_items(secrets, client):
         json_result = result.body
 
         dats = parse("objects[*]").find(json_result)
-        log.debug("one membership [%i total] item %s", len(dats), dats[0].value)
         for dat in dats:
             item_id = [f.value for f in Fields('id').find(dat.value)][0]
             item_name = [f.value for f in parse('item_data.name').find(dat.value)][0]
@@ -152,8 +153,10 @@ async def get_membership_items(secrets, client):
     elif result.is_error():
         print(result.errors)
 
-    log.debug("membership_item_names %s", membership_item_names)
-    log.debug("item locations %s", locations)
+    logger.log_struct(
+        { "membership_item_names": membership_item_names,
+         "item locations": locations},
+        severity='DEBUG' )
     return membership_item_names, locations
 
 
@@ -254,22 +257,24 @@ async def get_customer_details(secrets, client, customer_id):
     return None
 
 async def write_square_registration(batch, order_id, j):
-    log = logging.getLogger(__name__)
+    log_struct = {}
     event = event_year.active()[0]
 
     # TODO: current assumption, all items are same foolscap
     query = parse("$..line_items..name")
     match = query.find(j)
 
-    for name in [m.value for m in match]:
-        c = event_year.square_item_year_prefix(name)
+    item_names = [m.value for m in match]
+    for name in item_names:
+        c = event_year.square_item_year_prefix_to_event(name)
         if c:
             event = c
             break
-    log.info("storage reg %s event %s item0 %s",
-             j.get('customer_id'),
-             event,
-             match[0].value)
+
+    log_struct['event'] = event
+    log_struct['customer_id'] = j.get('customer_id')
+    log_struct['item_names'] = item_names
+    log_struct['registration'] = j
 
     if 'event' in j:
         event = j['event']['slug']
@@ -278,25 +283,25 @@ async def write_square_registration(batch, order_id, j):
     col = await storage.get_storage().get_event_collection_reference(service, event)
     document_reference = col.document(key)
     if not document_reference.get().exists:
-        log.debug("writing reg %s", j)
+        log_struct['message'] = "creating new document for registration"
         batch.create(document_reference, j)
     else:
-        log.debug("reg exists %s", j)
+        log_struct['message'] = "document already exists for registration"
+    return log_struct
 
 async def get_registrations(secrets, client):
-    log = logging.getLogger(__name__)
     membership_item_ids, locations = await get_membership_items(secrets, client)
-    log.debug( membership_item_ids )
     memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
-    log.debug( memberships )
+
     tasks = []
-    # TODO: Batch firestore writes
+
     batch = await storage.get_storage().start_batch()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for order_id, reg in memberships.items():
             tasks.append(asyncio.create_task(write_square_registration(batch, order_id, reg)))
-    await asyncio.gather(*tasks)
+    log_structs = await asyncio.gather(*tasks)
     batch.commit()
+    logger.log_struct(log_structs)
     return memberships
 
 async def get_locations(secrets, client):

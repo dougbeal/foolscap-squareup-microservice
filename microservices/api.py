@@ -64,15 +64,15 @@ if __name__ == '__main__':
         from unittest.mock import patch
         from unittest.mock import Mock
         from unittest.mock import MagicMock
-        requests_mock = microservices.tito.main.create_requests_mock()
+        from microservices import create_requests_mock as crm
 
-        @patch('requests.delete', requests_mock)
-        @patch('requests.post', requests_mock)
-        @patch('requests.patch', requests_mock)
+        @patch('requests.delete', crm('requests.delete'))
+        @patch('requests.post', crm('requests.post'))
+        @patch('requests.patch', crm('requests.patch'))
         @patch.multiple('microservices.tito.api.requests',
-                        post=requests_mock,
-                        delete=requests_mock,
-                        patch=requests_mock)
+                        post=crm('requests.post'),
+                        delete=crm('requests.delete'),
+                        patch=crm('requests.patch'))
         def mocked_function():
             return fire.Fire()
         mocked_function()

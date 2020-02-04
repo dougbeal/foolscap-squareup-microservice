@@ -35,7 +35,7 @@ def earliest_order_date():
 
 
 
-def square_item_year_prefix(name):
+def square_item_year_prefix_to_event(name):
     for idx, year in enumerate(years()):
         prefix = f"F{str(year%100).zfill(2)}"
         if name.startswith(prefix):

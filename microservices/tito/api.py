@@ -13,6 +13,10 @@ from .. import storage
 from .. import event_year
 
 
+import microservices
+
+logger = microservices.logger
+
 
 CONVENTION_YEAR = "2020"
 FOOLSCAP = CONVENTION_YEAR
@@ -48,45 +52,44 @@ def get_write_headers(secrets):
 
 
 def log_request(response):
-    log = logging.getLogger(__name__)
     cache = ""
     if hasattr(response, 'from_cache'):
         if response.from_cache:
             cache = '[CACHE]'
     if response.status_code == 404 or response.status_code == 422:
-        log.error("%s: %s %s %s\n\t"
-                  "headers %s\n\t"
-                  "json %s\n\t"
-                  "resp %s\n\t"
-                  "resp.headers %s\n\t"
-                  "resp.text %s",
-                  response.status_code, cache, response.request.method, response.request.url,
-                  response.request.headers,
-                  response.request.body,
-                  response,
-                  response.headers,
-                  response.text
-                  )
-        log.error("locals %s", locals())
+        logger.log_struct(
+            {
+                "response.status_code":response.status_code,
+                "cache":cache,
+                "response.request.method":response.request.method,
+                "response.request.url":response.request.url,
+                "response.request.headers":response.request.headers,
+                "response.request.body":response.request.body,
+                "response":response,
+                "response.headers":response.headers,
+                "response.text":response.text,
+                "locals": locals()
+             },
+            severity='ERROR')
     else:
-        log.debug("%s: %s %s %s\n\t",
-                 response.status_code, cache, response.request.method, response.request.url)
-        log.debug("headers %s\n\t"
-                  "json %s\n\t"
-                  "resp %s\n\t"
-                  "resp.headers %s\n\t"
-                  "resp.text %s",
-
-                  response.request.headers,
-                  response.request.body,
-                  response,
-                  response.headers,
-                  response.text
-                  )
+        logger.log_struct(
+            {
+                "response.status_code":response.status_code,
+                "cache":cache,
+                "response.request.url":response.request.url,
+                "response.request.headers":response.request.headers,
+                "response.request.body":response.request.body,
+                "response":response,
+                "response.request":response.request,
+                "response.headers":response.headers,
+                "response.text":response.text,
+                "locals": locals()
+             },
+            severity='DEBUG')
 
 
 async def get_tito_generic(secrets, name, event, params={}):
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/{name}"
+    url = '/'.join([APIBASE, ACCOUNT_SLUG, event, name])
     headers = get_base_headers(secrets)
     resp = requests.get(url, headers=headers, params=params)
     log_request(resp)
@@ -106,8 +109,6 @@ async def put_tito_generic(secrets, event, name, json=None, operation=None):
     else:
         resp = operation(url, headers=headers)
 
-    log.debug("put_tito_generic %s/%s event %s name %s json %s",
-              operation, url, event, name, json)
     log_request(resp)
     resp.raise_for_status()
     if resp.text:
@@ -160,8 +161,6 @@ def document_to_obj(doc_snapshot):
     return obj
 
 async def write_tito_registration(j, event=EVENT_SLUG):
-    log = logging.getLogger(__name__)
-    log.info("storage reg %s", j.get('name'))
     if 'event' in j:
         event = j['event']['slug']
     key = j['reference']
@@ -169,11 +168,10 @@ async def write_tito_registration(j, event=EVENT_SLUG):
     col = await storage.get_storage().get_event_collection_reference(service, event)
     document_reference = col.document(key)
     if not document_reference.get().exists:
-        log.debug("writing reg %s", j)
         document_reference.create(j)
+        logger.log_struct(j)
     else:
-        log.debug("reg exists %s", j)
-
+        logger.log_struct(j, severity='DEBUG')
 
 async def get_answers(secrets, question_slug):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions/{question_slug}/answers"
@@ -185,11 +183,9 @@ async def get_registrations(secrets):
     return await loop_over_events(secrets, get_registration_event)
 
 async def get_registration_event(secrets, event):
-    log = logging.getLogger(__name__)
     resp = await get_tito_generic(secrets, "registrations", event, params={ 'view': 'extended' })
 
     registrations = resp['registrations']
-    log.info("storing %s has %i registrations", event, len(registrations))
     tasks = []
     # TODO: Batch firestore writes
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -212,7 +208,6 @@ async def create_tito_registration(secrets, event, registration, square_data):
     find = query.find(json_result)
     if len(find)>0:
         find = find[0]
-        log.debug(find)
 
         registration_slug = find.value['slug']
         asyncio.create_task(put_tito_generic(
@@ -225,7 +220,11 @@ async def create_tito_registration(secrets, event, registration, square_data):
             json_result,
             square_data))
     else:
-        log.info("no registrations %s", json_result)
+        logger.log_struct(
+            {'msg': "no registrations found",
+             **json_result},
+            severity='DEBUG'
+             )
     return json_result
 
 
@@ -240,10 +239,6 @@ def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
 
 async def update_tito_tickets(secrets, event, registration, square_data, badge_number=None):
-    log = logging.getLogger(__name__)
-
-    log.debug("tito reg %s", registration)
-    log.debug("square data %s", square_data)
     query = parse('$..note')
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
@@ -262,15 +257,13 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
     membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
 
     for num, ticket in enumerate(membership_tickets):
-        log.debug("membership ticket ticket %i %s", num, ticket)
+
         ticket_slug = ticket['slug']
 
         if not 'responses' in ticket:
             # need to load extended ticket
             log.debug("loading extended ticket {ticket_slug}")
             ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}", event)
-        else:
-            log.debug("ticket has responses")
 
         answers = ticket['responses']
         update = {}
@@ -301,8 +294,6 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
                 if badge_name:
                     #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
                     update.setdefault('answers',{}).update({ 'badge-name': badge_name })
-            else:
-                log.info("badge-name is already %s", answers)
 
         # assign badge number if not Bite and not already assigned
         if badge_number:
@@ -311,21 +302,13 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
             if (not answers.get('badge-number') or
                 answers.get('badge-number') and answers['badge-number'].isnumeric() and str(answers['badge-number']) != str(ticket_badge_number) ):
                 #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })
-                log.info("badge-number will be updated to %s, answers: %s", ticket_badge_number, answers)
+
                 # tito wants question answers to be strings
                 update.setdefault('answers', {}).update({ 'badge-number': str(ticket_badge_number) })
 
         # If anything is set in update, send changes via tito update ticket
         if bool(update):
-            log.info( "%s[%s]: %i membership tickets, %i non-membership tickets, notes %s",
-                registration_name, badge_number,
-                len(membership_tickets), len(bite_tickets),
-                notes)
             update['release_id'] = ticket['release_id']
-            log.info("update membership ticket[%s:%s] %s",
-                     ticket_slug, ticket['release_title'],
-                     update
-                     )
 
             asyncio.create_task(put_tito_generic(
                 secrets,
@@ -333,21 +316,34 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
                 f"tickets/{ticket_slug}",
                 json={'ticket':update},
                 operation=requests.patch))
+            logger.log_struct(
+                {'msg': "updating membership tickets",
+                 'ticket': ticket,
+                 'update': update})
 
             if len(bite_tickets):
                 update = update.copy()
                 bite = bite_tickets.pop()
                 bite_ticket_slug = bite['slug']
                 update['release_id'] = bite['release_id']
-                log.info("update non-membership ticket[%s:%s] %s", bite_ticket_slug, ticket['release_title'], pformat(update))
+
                 asyncio.create_task(put_tito_generic(
                     secrets,
                     event,
                     f"tickets/{bite_ticket_slug}",
                     json={"ticket":update},
                     operation=requests.patch))
+                logger.log_struct(
+                    {'msg': "updating non-membership tickets",
+                     'ticket': bite,
+                     'update': update})
         else:
-            log.debug("NOT update ticket[%s] %s", ticket['release_title'], pformat(update))
+            logger.log_struct(
+                {'msg': "not updating tickets",
+                 'ticket': ticket,
+                 'update': update},
+                 severity='DEBUG')
+
 
 
 
@@ -439,13 +435,13 @@ async def sync_active(secrets):
 
 async def sync_event(secrets, event):
     log = logging.getLogger(__name__)
-    log.info("syncing event %s", event)
-    log.debug("reading registrations")
     j = await read_registrations()
     st = storage.get_storage()
 
     tito_registrations = j[st.col0]['tito'][st.col1][event][st.col2]
     square_registrations = j[st.col0]['square'][st.col1][event][st.col2]
+
+
 
     # TODO: filter out test or production tito entries
 
@@ -453,11 +449,6 @@ async def sync_event(secrets, event):
     query = Slice().child(Fields('source'))
     find = query.find(tito_registrations)
     tito_sources = {m.value for m in find}
-
-    if square_registrations:
-        log.debug( "square fields " + pformat(square_registrations[0]))
-    if tito_registrations:
-        log.debug( "tito fields " + pformat(tito_registrations[0]))
 
     square_by_date = sorted(square_registrations, key=lambda reg: isoparse(reg['closed_at']))
 
@@ -494,12 +485,10 @@ async def sync_event(secrets, event):
 
             tito_name = await square_ticket_tito_name(secrets, event, item_name)
             if not tito_name:
-                log.warning("item %s not in map.", item_name)
                 continue
 
             if 'dealer' in item_name.lower(): # two badger per dealer space
                 quantity *= 2
-                log.debug('%i dealer badges created', quantity)
 
             item = {
                 'release_id': rel_ids[tito_name],
@@ -513,10 +502,7 @@ async def sync_event(secrets, event):
 
         # if there are no line_items, then its not a membership sale
         if tito['line_items'] and not order_id in tito_sources:
-            log.info(f"add to tito {tito} {order_date}")
             order_from_square_tito_add.append(tito)
-        else:
-            log.debug(f"already in tito {name} {email} {note}")
 
         tito = tito.copy()
         tito['order_date'] = order_date
@@ -525,11 +511,7 @@ async def sync_event(secrets, event):
         order_dates[order_id] = order_date
 
 
-    log.info("reg count square %i tito %i.  creating %i",
-             len(square_registrations),
-             len(tito_registrations),
-             len(order_from_square_tito_add)
-             )
+
 
     square_map = square_registration_order_map(square_registrations)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -547,8 +529,6 @@ async def sync_event(secrets, event):
     #  'completed_at': '2019-12-22T22:16:16.000-08:00',
     #  filter Source: None
 
-
-    log.debug("adding order_date for sorting")
     for reg in [*tito_registrations, *new_tito_registrations]:
         source = reg['source']
         if source is None:
@@ -559,15 +539,17 @@ async def sync_event(secrets, event):
 
 
     sorted_by_date = sorted([*tito_registrations, *new_tito_registrations], key=lambda item: isoparse(item['order_date']))
-    log.debug("sorted %s:", [order['name'] for order in sorted_by_date])
+
 
 
     # add badge numbers
-    log.debug("adding badge numbers")
     badge_number = 2 # 1 is reserved
     tasks = []
     for registration in sorted_by_date:
-        membership_count = len([ 0 for ticket in registration['tickets'] if not ticket['release_title'] == 'Bite of Foolscap Banquet'])
+        membership_count = len(
+            [ 0 for ticket in registration['tickets']
+             if is_membership_ticket(ticket['release_title'])])
+
         tasks.append(asyncio.create_task(update_tito_tickets(
             secrets,
             event,
@@ -577,9 +559,15 @@ async def sync_event(secrets, event):
         badge_number = badge_number + membership_count
 
     # wait for everything to complete before sync is done
-    log.debug("await tasks")
     await asyncio.gather(*tasks)
-    log.debug("tasks done")
+
+    logger.log_struct(
+        {
+            'count.square': len(square_registrations),
+            'count.tito': len(tito_registrations),
+            'count.tito.added': len(order_from_square_tito_add),
+            'sorted': [order['name'] for order in sorted_by_date],
+            'registrations': j })
 
 
 async def delete_all_webhooks(secrets):
