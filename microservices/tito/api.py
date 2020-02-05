@@ -249,7 +249,7 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
         update = {}
 
         # ticket came from square, unpack data from square customer and note
-        if registration['source']:
+        if registration.get('source'):
             if not ticket['email'] and ticket['registration_email']:
                 update['email'] = ticket['registration_email']
             if not ticket['first_name'] and ticket['registration_name']:
