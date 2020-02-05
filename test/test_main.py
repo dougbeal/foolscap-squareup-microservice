@@ -224,3 +224,131 @@ class RegistrationTestTito(TestTito):
         from microservices import development_config as config
         secrets = config.secrets
         foo = await microservices.tito.api.sync_active(secrets)
+
+    @patch('microservices.tito.api.read_registrations',
+           spec=microservices.tito.api.read_registrations,
+           return_value={
+               "foolscap-microservices": {
+                   "tito": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": []
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                               }
+                               },
+                   "square": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": []
+                               },
+                "foolscap-2021": {
+                    "registrations": [
+                        {
+                            "closed_at": "2020-02-05T22:27:39Z",
+                            "order_id": "8QaWHuQfdabbQIKFU8uxydyeV",
+                            "line_items": [
+                                {
+                                    "gross_sales_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "name": "F21 Membership",
+                                    "note": "Test User\nTest.user,email@dougbeal.com",
+                                    "total_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "base_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP",
+                                    "uid": "59ED7648-4113-48E2-8ECB-A78271E65AE3",
+                                    "quantity": "1",
+                                    "variation_total_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "total_discount_money": {
+                                        "amount": 0,
+                                        "currency": "USD"
+                                    },
+                                    "variation_name": "Early Bird",
+                                    "total_tax_money": {
+                                        "amount": 0,
+                                        "currency": "USD"
+                                    }
+                                }
+                            ],
+                            "customer": None,
+                            "customer_id": ""
+                        },
+                        {
+                            "closed_at": "2020-02-01T03:13:14Z",
+                            "order_id": "k8nit33rNXBUEr4bkE1rIyMF",
+                            "line_items": [
+                                {
+                                    "uid": "B3379EAB-E6E6-4FC0-804D-E3C585A515A7",
+                                    "quantity": "1",
+                                    "gross_sales_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "name": "F21 Membership",
+                                    "variation_total_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "total_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "total_discount_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "variation_name": "Early Bird",
+                                    "total_tax_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "base_price_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP"
+                                }
+                            ],
+                            "customer": {
+                                "created_at": "2020-02-02T00:41:55.635Z",
+                                "groups": [
+                                    {
+                                        "name": "Reachable",
+                                        "id": "BQH2PF2ZQK4SP.REACHABLE"
+                                    }
+                                ],
+                                "creation_source": "DIRECTORY",
+                                "family_name": "Uer",
+                                "email_address": "test@dougbeal.com",
+                                "id": "6XCQR574G954HADQC6J2ZE2RSW",
+                                "given_name": "Test",
+                                "updated_at": "2020-02-02T09:16:48Z",
+                                "preferences": {
+                                    "email_unsubscribed": False
+                                }
+                            },
+                            "customer_id": "6XCQR574G954HADQC6J2ZE2RSW"
+                        }
+                    ]
+                }
+            }
+                       }}})
+
+    @async_test
+    async def test_sync_events_from_square(self, *mock):
+        from microservices import development_config as config
+        secrets = config.secrets
+        foo = await microservices.tito.api.sync_active(secrets)
