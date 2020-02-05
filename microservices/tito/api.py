@@ -132,7 +132,6 @@ def collection_to_obj(col):
     for doc_snapshot in col.stream():
         obj = document_to_obj(doc_snapshot)
         l.append(obj)
-    log.debug("collection[%s] of %i", col.parent, len(l))
     return l
 
 
@@ -140,7 +139,6 @@ def document_to_obj(doc_snapshot):
     log = logging.getLogger(__name__)
 
     obj = doc_snapshot.to_dict()
-    log.debug("document %s %s", doc_snapshot.id, obj)
     return obj
 
 async def write_tito_registration(j, event=EVENT_SLUG):
@@ -245,7 +243,6 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
 
         if not 'responses' in ticket:
             # need to load extended ticket
-            log.debug("loading extended ticket {ticket_slug}")
             ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}", event)
 
         answers = ticket['responses']
@@ -331,19 +328,12 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
 
 
 
-async def mark_tito_registration_paid(secrets, registration_slug):
-    log = logging.getLogger(__name__)
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/registrations/{registration_slug}/confirmations"
-    log.info(url)
-    headers = get_write_headers(secrets)
-    r = requests.post(url,
-                      headers=headers
-                      )
-    if r.status_code == 404 or r.status_code == 422:
-        log.error(f"{r.status_code}: {url}, {headers}, {r} {r.text}")
-        log.error(pformat(locals()))
-    r.raise_for_status()
-    log.info(f"{r.status_code}: url:{url}, headers:{headers}, r:{r} r.text{r.text}")
+async def mark_tito_registration_paid(secrets, event, registration_slug):
+    await put_tito_generic(
+        secrets,
+        event,
+        '/'.join(registration_slug, 'confirmations'),
+        operation=requests.post)
 
 
 # updated 2019-12-29
@@ -385,7 +375,6 @@ async def get_tito_release_names(secrets, event):
         query = parse('$.releases..id')
         match = query.find(resp)
         rel_ids = [m.value for m in match]
-        log.info("tito %s releases %s", event, releases)
         TITO_RELEASE_NAMES[event] = releases
         TITO_RELEASE_NAME_ID[event] = dict(zip(releases, rel_ids))
     return TITO_RELEASE_NAMES[event], TITO_RELEASE_NAME_ID[event]
@@ -417,14 +406,11 @@ async def sync_active(secrets):
     return await loop_over_events(secrets, sync_event)
 
 async def sync_event(secrets, event):
-    log = logging.getLogger(__name__)
     j = await read_registrations()
     st = storage.get_storage()
 
     tito_registrations = j[st.col0]['tito'][st.col1][event][st.col2]
     square_registrations = j[st.col0]['square'][st.col1][event][st.col2]
-
-
 
     # TODO: filter out test or production tito entries
 
@@ -513,10 +499,11 @@ async def sync_event(secrets, event):
     #  filter Source: None
 
     for reg in [*tito_registrations, *new_tito_registrations]:
-        source = reg['source']
+        source = reg.get('source', None)
         if source is None:
             reg['order_date'] = reg['completed_at']
         else:
+            # order originated in square
             reg['order_date'] = order_dates[source]
             reg['square_data'] = square_map[source]
 
@@ -559,7 +546,6 @@ async def delete_all_webhooks(secrets):
     query = parse("$..id")
     match = query.find(hooks)
     webhook_ids = [m.value for m in match]
-    log.info("webhook ids %s", webhook_ids)
     await asyncio.gather(*[asyncio.create_task(
         put_tito_generic(secrets,
                          "webhook_endpoints/" + str(whid),
@@ -571,7 +557,6 @@ async def delete_all_webhooks(secrets):
 async def get_webhooks(secrets):
     log = logging.getLogger(__name__)
     hooks = await get_tito_generic(secrets, 'webhook_endpoints')
-    log.debug(hooks)
     return hooks
 
 async def set_webhooks(secrets):

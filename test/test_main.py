@@ -3,14 +3,16 @@ from unittest.mock import MagicMock
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
+from datetime import datetime
 import asyncio
 import json
+import requests
 import tracemalloc
 import unittest
-import requests
 
 import main
 import microservices.square.api
+import microservices.tito.api
 
 import google.cloud.logging
 
@@ -51,7 +53,7 @@ class TestGoogleCloundFunctions(unittest.TestCase):
         # top_stats = snapshot.statistics('lineno')
         pass
 
-    
+
     def test_foolscap_square_webhook(self, *mocks):
         main.foolscap_square_webhook(self.request())
         main.logger.log_struct.assert_called()
@@ -116,20 +118,20 @@ class TestTitoRealLogging(TestTito):
 
     def tearDown(self):
         pass
-    
+
     @async_test
     async def test_get_tito_generic_logging():
         from microservices import development_config as config
         secrets = config.secrets
         foo = await microservices.tito.api.get_tito_generic(
-            secrets, 'webhooks', 'foolscap-2020')    
+            secrets, 'webhooks', 'foolscap-2020')
 
 class TestTitoMockLogging(TestTito):
     def setUp(self):
         main.logging_client = MagicMock(name='logging_client')
         main.logger = MagicMock(name='main.logger')
         microservices.tito.api.logger = MagicMock(name='logger')
-        microservices.square.api.logger = MagicMock(name='logger')        
+        microservices.square.api.logger = MagicMock(name='logger')
 
     def tearDown(self):
         pass
@@ -158,23 +160,6 @@ class TestTitoMockLogging(TestTito):
         microservices.tito.api.logger.log_struct.assert_called()
 
 
-
-mock_read_registrations = AsyncMock(
-    spec=microservices.tito.api.read_registrations,
-    return_value={ 'value'
-                   } )
-
-def get_tito_generic(secrets, name, event, params={}):
-    if 'name' == 'releases':
-        return ''
-
-    return ''
-
-mock_get_tito_generic = AsyncMock(
-    spec=microservices.tito.api.get_tito_generic,
-    side_effect=get_tito_generic
-    )
-
 @patch('requests.delete', create_requests_mock(requests.delete))
 @patch('requests.post', create_requests_mock(requests.delete))
 @patch('requests.patch', create_requests_mock(requests.delete))
@@ -186,7 +171,54 @@ class RegistrationTestTito(TestTito):
         pass
 
     @patch('microservices.tito.api.read_registrations',
-           mock=mock_read_registrations)
+           spec=microservices.tito.api.read_registrations,
+           return_value={
+               "foolscap-microservices": {
+                   "tito": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": [{
+                                   'name': 'notfromsquare',
+                                   'completed_at': datetime(1000,10,2).isoformat(),
+                                   'tickets': [
+                                               ]
+                                   },{
+                                       'name': 'fromsquare',
+                                       'source': 'fromsquare',
+                                       'tickets': [
+                                               ]
+                                       }
+
+
+                                                 ]
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                               }
+                               },
+                   "square": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": [{
+                                   'name': 'fromsquare',
+                                   'order_id': 'fromsquare',
+                                   'closed_at': datetime(1000,10,1).isoformat(),
+                                   'line_items': [
+
+                                                  ]
+                                   }
+                                                 ]
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                        }
+                        },
+                        }
+                        }
+           )
+
     @async_test
     async def test_sync_event(self, *mock):
         from microservices import development_config as config
