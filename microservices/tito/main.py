@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from pprint import pformat
+from pprint import pformat, pprint
 
 import microservices.tito.api as api
 
@@ -13,7 +13,7 @@ def loop(api_function, level):
 
     loop = asyncio.get_event_loop()
     try:
-        loop.run_until_complete(api_function(secrets=secrets))
+        return loop.run_until_complete(api_function(secrets=secrets))
     except:
         if not PRODUCTION:
             import pdb, traceback
@@ -27,7 +27,7 @@ def delete_all_webhooks(level=logging.DEBUG):
     return loop(api.delete_all_webhooks, level)
 
 def get_webhooks(level=logging.DEBUG):
-    return loop(api.get_webhooks, level)
+    pprint( loop(api.get_webhooks, level))
 
 def sync(level=logging.WARNING):
     logging.basicConfig(level=level)

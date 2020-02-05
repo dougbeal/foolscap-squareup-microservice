@@ -540,14 +540,15 @@ async def sync_event(secrets, event):
             'registrations': j })
 
 
-async def delete_all_webhooks(secrets):
+async def delete_all_webhooks(secrets, event):
     log = logging.getLogger(__name__)
-    hooks = await get_webhooks(secrets)
+    hooks = await get_webhooks(secrets, event)
     query = parse("$..id")
     match = query.find(hooks)
     webhook_ids = [m.value for m in match]
     await asyncio.gather(*[asyncio.create_task(
         put_tito_generic(secrets,
+                         event,                         
                          "webhook_endpoints/" + str(whid),
                          operation=requests.delete
                          ))
@@ -555,21 +556,16 @@ async def delete_all_webhooks(secrets):
 
 
 async def get_webhooks(secrets):
-    log = logging.getLogger(__name__)
-    hooks = await get_tito_generic(secrets, 'webhook_endpoints')
+    hooks = await loop_over_events(secrets, get_event_webhooks)
     return hooks
 
-async def set_webhooks(secrets):
-    data = {
-        'webhook_endpoint':
-        {
-            'url': secrets['metadata']['data']['tito']['production']['WEBHOOK_URL'],
-            'included_triggers': TITO_WEBHOOK_TRIGGERS
-            }
-        }
-    return await put_tito_generic(secrets, 'webhook_endpoints', data)
 
-async def update_webhook(secrets, webhook_ids):
+async def get_event_webhooks(secrets, event):
+    hooks = await get_tito_generic(secrets, 'webhook_endpoints', event)
+    hooks['event'] = event
+    return hooks
+
+async def set_webhooks(secrets, event):
     data = {
         'webhook_endpoint':
         {
@@ -577,17 +573,31 @@ async def update_webhook(secrets, webhook_ids):
             'included_triggers': TITO_WEBHOOK_TRIGGERS
             }
         }
-    return await put_tito_generic(secrets, 'webhook_endpoints/' + str(webhook_ids), data, operation=requests.patch)
+    return await put_tito_generic(secrets, event, 'webhook_endpoints', json=data)
+
+
+async def update_webhook(secrets, event, webhook_ids):
+    data = {
+        'webhook_endpoint':
+        {
+            'url': secrets['metadata']['data']['tito']['production']['WEBHOOK_URL'],
+            'included_triggers': TITO_WEBHOOK_TRIGGERS
+            }
+        }
+    return await put_tito_generic(secrets, event, 'webhook_endpoints/' + str(webhook_ids), json=data, operation=requests.patch)
 
 async def create_update_webhook(secrets):
+    return await loop_over_events(secrets, create_update_event_webhook)
+
+async def create_update_event_webhook(secrets, event):
     log = logging.getLogger(__name__)
-    hooks = await get_webhooks(secrets)
+    hooks = await get_event_webhooks(secrets, event)
     log.info("hooks %s", hooks)
 
     if len(hooks['webhook_endpoints']) > 1:
         log.info("more than one webhook, deleting all")
-        await delete_all_webhooks(secrets)
-        return await set_webhooks(secrets)
+        await delete_all_webhooks(secrets, event)
+        return await set_webhooks(secrets, event)
     elif len(hooks['webhook_endpoints']):
         triggers = hooks['webhook_endpoints'][0]['included_triggers']
         webhook_id = hooks['webhook_endpoints'][0]['id']
@@ -595,11 +605,11 @@ async def create_update_webhook(secrets):
             log.info("changes %s", set(triggers).difference(set(TITO_WEBHOOK_TRIGGERS)))
             log.info("need to update triggers %s:%s, %s:%s", type(triggers[0]), triggers, type(TITO_WEBHOOK_TRIGGERS[0]), TITO_WEBHOOK_TRIGGERS)
             log.info(triggers[0]==TITO_WEBHOOK_TRIGGERS[0])
-            return await update_webhook(secrets, webhook_id)
+            return await update_webhook(secrets, event, webhook_id)
         else:
             log.info("no trigger changes")
     else:
-        return await set_webhooks(secrets)
+        return await set_webhooks(secrets, event)
 
 
 
