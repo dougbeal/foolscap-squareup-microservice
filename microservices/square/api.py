@@ -31,7 +31,6 @@ async def get_last_update_date():
     lastdate = await get_value(['internals', 'updated'])
     if not lastdate:
         lastdate = event_year.earliest_order_date()
-    log.debug("last updated %s", lastdate)
     return lastdate
 
 async def get_future_date():
@@ -39,7 +38,6 @@ async def get_future_date():
 
 async def set_update_date(now):
     log = logging.getLogger(__name__)
-    log.debug("set updated %s", now)
     await set_value(['internals', 'updated'], now)
 
 async def set_value(path, value):
@@ -68,7 +66,6 @@ async def get_foolscap_category(secrets, client):
     if result.is_success():
         return result.body
     else:
-        log.error(result.errors)
         raise result.errors
 
 
@@ -90,7 +87,6 @@ async def get_foolscap_categories(secrets, client):
         }
     )
     if result.is_success():
-        log.info("result %s", result)
         return result.body
     else:
         log.error(result.errors)
@@ -192,15 +188,10 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
             }
         }
     }
-    log.debug("query %s", body)
     result = client.orders.search_orders(body=body)
-
-    log.info("searching for orders in locations %s [%s, %s] body len %i",
-              locations, start, end, len(result.body))
 
     membership_orders = {}
     if result.is_success():
-        log.debug("orders: %s", result.body)
         if 'orders' in result.body:
             for order in result.body['orders']:
                 order_id = order['id']
@@ -232,7 +223,6 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
 
 
 
-    log.debug(membership_orders)
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         orders = membership_orders.values()
@@ -309,7 +299,6 @@ async def get_locations(secrets, client):
     result = client.locations.list_locations()
 
     if result.is_success():
-        log.debug(result)
         return result.body
     else:
         log.error(result.errors)
