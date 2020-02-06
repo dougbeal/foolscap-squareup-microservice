@@ -219,11 +219,47 @@ def square_registration_order_map(square_registrations):
 def is_membership_ticket(title):
     return not title in { 'Bite of Foolscap Banquet' }
 
+def convert_square_registration(ticket, answers, notes, num):
+    update = {}
+    if not ticket.get('email') and ticket.get('registration_email'):
+        update['email'] = ticket['registration_email']
+    if not ticket.get('first_name') and ticket.get('registration_name'):
+        update['first_name'] = ticket['registration_name'].split()[0]
+    if not ticket.get('last_name') and ticket.get('registration_name'):
+        last_name = ' '.join(ticket['registration_name'].split()[1:])
+        if last_name:
+            update['last_name'] = last_name
+
+    if not 'badge-name' in answers:
+        badge_name = ticket.get('name', ticket.get('registration_name', ''))
+        if notes:
+            square_names = []
+            if isinstance(notes, list):
+                if len(notes) > 0:
+                    square_names = notes[0].split('\n')
+            else:
+                square_names = notes.split('\n')
+
+            if num <= len(square_names):
+                raw_badge_name = square_names[num].split(' ')
+            # use any bits until email
+                for n,r in enumerate(raw_badge_name):
+                    if '@' in r:
+                        del raw_badge_name[n:]
+                        break
+                badge_name = ' '.join(raw_badge_name[0:n+1])
+
+
+        if badge_name:
+            #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
+            update.setdefault('answers',{}).update({ 'badge-name': badge_name })
+    return update
+    
+
 async def update_tito_tickets(secrets, event, registration, square_data, badge_number=None):
     query = parse('$..note')
     match = query.find(square_data)
     notes = [m.value for m in match if m.value]
-    square_names = None
     # came from square, try to determine Badge Name from registration_name
     # syntax
     # badge-name: Badge Alpha
@@ -250,31 +286,7 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
 
         # ticket came from square, unpack data from square customer and note
         if registration.get('source'):
-            if not ticket['email'] and ticket['registration_email']:
-                update['email'] = ticket['registration_email']
-            if not ticket['first_name'] and ticket['registration_name']:
-                update['first_name'] = ticket['registration_name'].split()[0]
-            if not ticket['last_name'] and ticket['registration_name']:
-                last_name = ' '.join(ticket['registration_name'].split()[1:])
-                if last_name:
-                    update['last_name'] = last_name
-
-            if not 'badge-name' in answers:
-                badge_name = ticket.get('name', ticket['registration_name'])
-                if notes:
-                    if not square_names:
-                        square_names = notes[0].split('\n')
-
-                    raw_badge_name = square_names.pop().split()
-                    if len(raw_badge_name) > 2:
-                        badge_name = ' '.join(raw_badge_name[0:2])
-                    else:
-                        badge_name = ' '.join(raw_badge_name)
-
-                if badge_name:
-                    #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
-                    update.setdefault('answers',{}).update({ 'badge-name': badge_name })
-
+            update = convert_square_registration(ticket, answers, notes, num)
         # assign badge number if not Bite and not already assigned
         if badge_number:
             ticket_badge_number = int(badge_number)+num

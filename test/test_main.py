@@ -159,16 +159,83 @@ class TestTitoMockLogging(TestTito):
 
         microservices.tito.api.logger.log_struct.assert_called()
 
-
-@patch('requests.delete', create_requests_mock(requests.delete))
-@patch('requests.post', create_requests_mock(requests.delete))
-@patch('requests.patch', create_requests_mock(requests.delete))
-class RegistrationTestTito(TestTito):
+class SquareNameExtraction(TestTito):
     def setUp(self):
-        pass
+        self.patches = []
+        self.patches.append(patch('requests.delete', create_requests_mock(requests.delete)))
+        self.patches.append(patch('requests.post', create_requests_mock(requests.delete)))
+        self.patches.append(patch('requests.patch', create_requests_mock(requests.delete)))
 
     def tearDown(self):
-        pass
+        for p in self.patches:
+            p.stop()
+    
+
+    def test_convert_square_registration(self, *mock):
+        note = "Test User\nTest.user,email@dougbeal.com"
+        update = microservices.tito.api.convert_square_registration(
+            {},
+            {},
+            note,
+            0)
+        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Test User')
+
+    def test_convert_square_registration_two_tickets(self, *mock):
+        note = "Test User\nTest User2\ntestemail@foo.bar"
+        update = microservices.tito.api.convert_square_registration(
+            {},
+            {},
+            note,
+            1)
+        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Test User2')
+
+    def test_convert_square_registration_email_after_name(self, *mock):
+        note = "Test User testemail@foo.bar"
+        update = microservices.tito.api.convert_square_registration(
+            {},
+            {},
+            note,
+            0)
+        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Test User')
+
+    def test_convert_square_registration_long_name(self, *mock):
+        note = "Title Test Middle Last Last Last testemail@foo.bar"
+        update = microservices.tito.api.convert_square_registration(
+            {},
+            {},
+            note,
+            0)
+        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Title Test Middle Last Last Last')                        
+
+
+# TODO: requests patch not right        
+class RegistrationTestTito(TestTito):
+    def setUp(self):
+        self.patches = []
+
+        self.patches.append(
+            patch.multiple('microservices.tito.api.requests',
+                post=create_requests_mock(requests.post),
+                delete=create_requests_mock(requests.delete),
+                patch=create_requests_mock(requests.patch),
+                get=create_requests_mock(requests.get))
+            )
+
+        self.patches.append(
+            patch.multiple('requests',
+                post=create_requests_mock(requests.post),
+                delete=create_requests_mock(requests.delete),
+                patch=create_requests_mock(requests.patch),
+                get=create_requests_mock(requests.get))
+            )        
+        self.patches.append(patch('requests.delete', create_requests_mock(requests.delete)))
+        self.patches.append(patch('requests.post', create_requests_mock(requests.delete)))
+        self.patches.append(patch('requests.patch', create_requests_mock(requests.delete)))
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+    
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -352,3 +419,6 @@ class RegistrationTestTito(TestTito):
         from microservices import development_config as config
         secrets = config.secrets
         foo = await microservices.tito.api.sync_active(secrets)
+
+
+        
