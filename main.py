@@ -173,8 +173,6 @@ def foolscap_firestore_registration_document_changed(data, context):
         event = microservices.event_year.active()[0]
     # call a sync
     logger.log_struct({
-        'trigger_resource': trigger_resource,
-        'data': data,
-        'context': context.__dict__ })
+        'trigger_resource': trigger_resource })
 
     asyncio.run(microservices.tito.api.sync_event(secrets, event))
