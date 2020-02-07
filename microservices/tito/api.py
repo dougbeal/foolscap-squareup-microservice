@@ -281,7 +281,7 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
             # need to load extended ticket
             ticket = await get_tito_generic(secrets, f"tickets/{ticket_slug}", event)
 
-        answers = ticket['responses']
+        answers = ticket.get('responses')
         update = {}
 
         # ticket came from square, unpack data from square customer and note
@@ -291,7 +291,8 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
         if badge_number:
             ticket_badge_number = int(badge_number)+num
 
-            if (not answers.get('badge-number') or
+            if (not answers or
+                not answers.get('badge-number') or
                 answers.get('badge-number') and answers['badge-number'].isnumeric() and str(answers['badge-number']) != str(ticket_badge_number) ):
                 #update.setdefault('answers',[]).append({ 'slug': 'badge-number', 'primary_repsonse': ticket_badge_number })
 
