@@ -33,6 +33,7 @@ import microservices.api
 import microservices.event_year
 
 def setup_resources():
+    microservices.tito.api.TITO_MODE = 'production'
     global pubsub_client, square_client, secret_client, secrets
     if not pubsub_client:
         pubsub_client = pubsub_v1.PublisherClient()
