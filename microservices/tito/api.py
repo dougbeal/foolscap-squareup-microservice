@@ -555,11 +555,13 @@ async def sync_event(secrets, event):
 
     logger.log_struct(
         {
+            'event': event,
             'count.square': len(square_registrations),
             'count.tito': len(tito_registrations),
             'count.tito.added': len(order_from_square_tito_add),
             'sorted': [order['name'] for order in sorted_by_date],
-            'registrations': j })
+            'registrations': len(sorted_by_date)
+        })
 
 
 async def delete_all_webhooks(secrets, event):

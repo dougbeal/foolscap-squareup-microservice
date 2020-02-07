@@ -195,6 +195,9 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
         if 'orders' in result.body:
             for order in result.body['orders']:
                 order_id = order['id']
+                # if order has been refunded, dont' sync to tito
+                if 'refunds' in order:
+                    continue
                 membership = {}
                 if 'line_items' in order:
                     membership_items = []
