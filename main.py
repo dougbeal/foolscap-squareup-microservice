@@ -104,7 +104,7 @@ def foolscap_pubsub_topic_square_change(event, context):
 
     logger.log_struct( {
         'event': event,
-        'conntext': context.__dict__,
+        'context': context.__dict__,
         'registrations': registrations } )
 
 

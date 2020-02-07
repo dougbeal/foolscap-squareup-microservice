@@ -517,8 +517,17 @@ async def sync_event(secrets, event):
             reg['order_date'] = reg['completed_at']
         else:
             # order originated in square
-            reg['order_date'] = order_dates[source]
-            reg['square_data'] = square_map[source]
+            if source in order_dates:
+                reg['order_date'] = order_dates[source]
+                reg['square_data'] = square_map[source]
+            else:
+                logger.log_struct(
+                    {
+                        'msg': 'Could find order_id in square data.  Deletion?',
+                        'order_id': source
+                        },
+                    severity='warning'
+                    )
 
 
     sorted_by_date = sorted([*tito_registrations, *new_tito_registrations], key=lambda item: isoparse(item['order_date']))
