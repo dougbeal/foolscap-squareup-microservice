@@ -85,6 +85,7 @@ def fire_mock():
     from unittest.mock import patch
     from unittest.mock import Mock
     from unittest.mock import MagicMock
+    from microservices import create_requests_mock
 
     @patch('requests.delete', create_requests_mock(requests.delete))
     @patch('requests.post', create_requests_mock(requests.delete))
