@@ -394,7 +394,7 @@ async def get_tito_release_names(secrets, event):
 
 async def square_ticket_tito_name(secrets, event, name):
     tito_releases, _ = await get_tito_release_names(secrets, event)
-    name_keywords = ['Banq', 'Dealer', 'Early', 'Student', 'Concom']
+    name_keywords = ['Banq', 'Dealer', 'Early', 'Student', 'Concom', 'Singleton']
     for keyword in name_keywords:
         if keyword.lower() in name.lower():
             for tito in tito_releases:
