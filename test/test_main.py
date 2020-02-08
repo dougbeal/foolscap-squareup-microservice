@@ -13,6 +13,7 @@ import unittest
 import main
 import microservices.square.api
 import microservices.tito.api
+import microservices.development_config
 
 import google.cloud.logging
 
@@ -107,7 +108,7 @@ class TestSquare(unittest.TestCase):
 
 class TestTito(unittest.TestCase):
     def setUp(self):
-        pass
+        self.secrets = MagicMock(autospec=microservices.development_config.secrets)
 
     def tearDown(self):
         pass
@@ -122,9 +123,8 @@ class TestTitoRealLogging(TestTito):
     @async_test
     async def test_get_tito_generic_logging():
         from microservices import development_config as config
-        secrets = config.secrets
         foo = await microservices.tito.api.get_tito_generic(
-            secrets, 'webhooks', 'foolscap-2020')
+            self.secrets, 'webhooks', 'foolscap-2020')
 
 class TestTitoMockLogging(TestTito):
     def setUp(self):
@@ -146,13 +146,12 @@ class TestTitoMockLogging(TestTito):
                 get=create_requests_mock('requests.get'))
     @async_test
     async def test_get_tito_generic(self, logging, query, *mocks):
-        secrets = MagicMock(name='secret')
         name = 'name'
         event = 'event-2222'
         params = {}
 
         result = await microservices.tito.api.get_tito_generic(
-            secrets,
+            self.secrets,
             name,
             event,
             params )
@@ -211,6 +210,7 @@ class SquareNameExtraction(TestTito):
 # TODO: requests patch not right        
 class RegistrationTestTito(TestTito):
     def setUp(self):
+        super().setUp()
         self.patches = []
 
         self.patches.append(
@@ -228,14 +228,21 @@ class RegistrationTestTito(TestTito):
                 patch=create_requests_mock(requests.patch),
                 get=create_requests_mock(requests.get))
             )        
-        self.patches.append(patch('requests.delete', create_requests_mock(requests.delete)))
-        self.patches.append(patch('requests.post', create_requests_mock(requests.delete)))
-        self.patches.append(patch('requests.patch', create_requests_mock(requests.delete)))
+        self.patches.append(patch('microservices.tito.api.requests.delete', create_requests_mock(requests.delete)))
+        self.patches.append(patch('microservices.tito.api.requests.post', create_requests_mock(requests.delete)))
+        self.patches.append(patch('microservices.tito.api.requests.patch', create_requests_mock(requests.delete)))
+
+        self.patches.append(patch('microservices.tito.api.get_tito_generic', autospec=microservices.tito.api.get_tito_generic))
+        self.patches.append(patch('microservices.tito.api.put_tito_generic', autospec=microservices.tito.api.put_tito_generic))                                   
 
     def tearDown(self):
+        super().tearDown()
         for p in self.patches:
             p.stop()
-    
+
+    def test_sync_event(self):
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(self.do_test_sync_event())        
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -285,12 +292,9 @@ class RegistrationTestTito(TestTito):
                         }
                         }
            )
-
-    @async_test
-    async def test_sync_event(self, *mock):
+    async def do_test_sync_event(self, read_registrations, *mock):
         from microservices import development_config as config
-        secrets = config.secrets
-        foo = await microservices.tito.api.sync_active(secrets)
+        foo = await microservices.tito.api.sync_active(self.secrets)
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -413,12 +417,173 @@ class RegistrationTestTito(TestTito):
                 }
             }
                        }}})
-
     @async_test
     async def test_sync_events_from_square(self, *mock):
         from microservices import development_config as config
-        secrets = config.secrets
-        foo = await microservices.tito.api.sync_active(secrets)
+        foo = await microservices.tito.api.sync_active(self.secrets)    
 
+    @patch('microservices.tito.api.read_registrations',
+           spec=microservices.tito.api.read_registrations,
+           return_value={
+               "foolscap-microservices": {
+                   "tito": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": []
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                               }
+                               },
+                   "square": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": []
+                               },
+                "foolscap-2021": {
+                    "registrations": [
+                        {
+                            "closed_at": "2020-02-05T22:27:39Z",
+                            "order_id": "8QaWHuQfdabbQIKFU8uxydyeV",
+                            "line_items": [
+                                {
+                                    "gross_sales_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "name": "F21 Membership",
+                                    "note": "Test User\nTest.user,email@dougbeal.com",
+                                    "total_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "base_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP",
+                                    "uid": "59ED7648-4113-48E2-8ECB-A78271E65AE3",
+                                    "quantity": "1",
+                                    "variation_total_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "total_discount_money": {
+                                        "amount": 0,
+                                        "currency": "USD"
+                                    },
+                                    "variation_name": "Early Bird",
+                                    "total_tax_money": {
+                                        "amount": 0,
+                                        "currency": "USD"
+                                    }
+                                }
+                            ],
+                            "customer": None,
+                            "customer_id": ""
+                        },
+                        {
+                            "closed_at": "2020-02-01T03:13:14Z",
+                            "order_id": "k8nit33rNXBUEr4bkE1rIyMF",
+                            "line_items": [
+                                {
+                                    "uid": "B3379EAB-E6E6-4FC0-804D-E3C585A515A7",
+                                    "quantity": "1",
+                                    "gross_sales_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "name": "F21 Membership",
+                                    "variation_total_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "total_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "total_discount_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "variation_name": "Early Bird",
+                                    "total_tax_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "base_price_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP"
+                                },
+                                {
+                                    "uid": "B3379EAB-E6E6-4FC0-804D-E3C585A515A7",
+                                    "quantity": "1",
+                                    "gross_sales_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "name": "F21 Membership",
+                                    "variation_total_price_money": {
+                                        "amount": 5000,
+                                        "currency": "USD"
+                                    },
+                                    "total_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "total_discount_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "variation_name": "Early Bird",
+                                    "total_tax_money": {
+                                        "currency": "USD",
+                                        "amount": 0
+                                    },
+                                    "base_price_money": {
+                                        "currency": "USD",
+                                        "amount": 5000
+                                    },
+                                    "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP"
+                                }                                           
+                            ],
+                            "customer": {
+                                "created_at": "2020-02-02T00:41:55.635Z",
+                                "groups": [
+                                    {
+                                        "name": "Reachable",
+                                        "id": "BQH2PF2ZQK4SP.REACHABLE"
+                                    }
+                                ],
+                                "creation_source": "DIRECTORY",
+                                "family_name": "Uer",
+                                "email_address": "test@dougbeal.com",
+                                "id": "6XCQR574G954HADQC6J2ZE2RSW",
+                                "given_name": "Test",
+                                "updated_at": "2020-02-02T09:16:48Z",
+                                "preferences": {
+                                    "email_unsubscribed": False
+                                }
+                            },
+                            "customer_id": "6XCQR574G954HADQC6J2ZE2RSW"
+                        }
+                    ]
+                }
+            }
+                       }}})
+    @patch('microservices.tito.api.get_tito_release_names',
+           return_value=(['Early Bird'], {'Early Bird': 'EB Release id'}))
+    @patch('microservices.tito.api.square_ticket_tito_name',
+           return_value='Early Bird')
+    
+    async def do_test_sync_events_from_square_two_tickets(self, *mock):
+        from microservices import development_config as config
+        foo = await microservices.tito.api.sync_active(self.secrets)
 
+    def test_sync_events_from_square_two_tickets(self, *mock):
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(self.do_test_sync_events_from_square_two_tickets())                
         
