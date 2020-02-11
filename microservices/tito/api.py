@@ -193,8 +193,11 @@ async def create_tito_registration(secrets, event, registration, square_data):
     find = query.find(json_result)
     if len(find)>0:
         find = find[0]
-
-        registration_slug = find.value['slug']
+        registration_results = find.value
+        asyncio.create_task(write_tito_registration(
+            {**registration_results, **json_result},
+            event))
+        registration_slug = registration_results['slug']
         asyncio.create_task(put_tito_generic(
             secrets,
             event,
