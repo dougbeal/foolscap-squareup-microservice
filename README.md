@@ -224,6 +224,7 @@ python -m unittest discover test
 nose2 --debugger test.test_main.TestTito
 # test
 curl -X POST "https://nam3-foolscap-microservices.cloudfunctions.net/$FUNCTION_NAME" -H "Content-Type:application/json" --data '{"name":"Keyboard Cat"}'
+gcloud pubsub topics publish square.change  --message "message"
 ```
 
 TODO: rename repo to foolscap-microservices
