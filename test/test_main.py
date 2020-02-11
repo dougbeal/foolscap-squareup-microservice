@@ -1,14 +1,18 @@
+from datetime import datetime
 from unittest import mock
-from unittest.mock import MagicMock
 from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
-from datetime import datetime
 import asyncio
+import inspect
 import json
 import requests
 import tracemalloc
 import unittest
+
+from jsonpath_ng import jsonpath, Slice, Fields, Root
+from jsonpath_ng.ext import parse
 
 import main
 import microservices.square.api
@@ -17,46 +21,91 @@ import microservices.development_config
 
 import google.cloud.logging
 
-def async_test(coro):
-    def wrapper(*args, **kwargs):
-        loop = asyncio.new_event_loop()
-        return loop.run_until_complete(coro(*args, **kwargs))
-    return wrapper
-
 from microservices import create_requests_mock
 
-@patch('google.cloud.pubsub_v1.PublisherClient', spec=True)
-@patch('square.client.Client', spec=True)
-@patch('google.cloud.secretmanager.SecretManagerServiceClient', spec=True)
-@patch('yaml.load', spec=True)
-@patch('microservices.tito.api.storage', spec=microservices.tito.api.storage, mock=AsyncMock())
-@patch('microservices.storage', spec=microservices.storage, mock=AsyncMock())
-@patch('microservices.storage.get_storage', mock=AsyncMock())
-@patch.multiple('microservices.tito.api.requests',
-                post=create_requests_mock('requests.post'),
-                delete=create_requests_mock('requests.delete'),
-                patch=create_requests_mock('requests.patch'),
-                get=create_requests_mock('requests.get'))
 
-class TestGoogleCloundFunctions(unittest.TestCase):
+class TestTito(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.secrets = MagicMock(autospec=microservices.development_config.secrets)
+        self.patches = []
+        self.requests = {}
+        self.patchRequestSetUp()
+
+    def tearDown(self):
+        super().tearDown()
+        for p in self.patches:
+            p.stop()
+        self.patchRequestTearDown()
+
+
+    def patchRequestSetUp(self):
+        mod = 'microservices.tito.api.requests'
+        for fn in [requests.post, requests.delete, requests.patch, requests.get]:
+            assert not isinstance(fn, Mock)
+            p = patch(
+                '.'.join([mod, fn.__name__]), mock=create_requests_mock(fn))
+            self.patches.append(p)
+            self.requests[fn.__name__] = p.start()
+
+    def patchRequestTearDown(self):
+        pass
+
+    def assertOtherRequestNotCalled(self, name):
+        for k, v in self.requests.items():
+            if name == k:
+                continue
+            v.assert_not_called()
+    def assertRequestCalled(self, name, *args, **kwargs):
+        self.requests[name].assert_called_once()
+
+    def assertRequestCalledOnceWith(self, name, *args, **kwargs):
+        self.requests[name].assert_called_once_with(*args, **kwargs)
+
+
+
+#@patch('microservices.storage', autospec=True)
+#@patch('microservices.storage.get_storage', autospec=True)
+#@patch('microservices.storage.FirestoreStorage', name="Storage", autospec=True)
+class TestGoogleCloundFunctions(TestTito):
 
     def setUp(self):
+        super().setUp()
         main.logging_client = MagicMock(spec=main.logging_client, name='logging_client')
         main.logger = MagicMock(spec=main.logger, name='logging_client')
         self.request = MagicMock(name='request')
         self.event = MagicMock(name='event')
         self.context = MagicMock(name='context')
+        self.patches.append(
+            patch('google.cloud.pubsub_v1.PublisherClient', autospec=True))
+        self.patches.append(
+            patch('square.client.Client', autospec=True))
+        self.patches.append(
+            patch('google.cloud.secretmanager.SecretManagerServiceClient', autospec=True))
+        self.patches.append(
+            patch('yaml.load', autospec=True))
+        self.patches.append(
+            patch('microservices.tito.api.storage',
+            autospec=True,
+            return_value=AsyncMock(name='storage')))
         #tracemalloc.start()
 
     def tearDown(self):
+        super().tearDown()
         # snapshot = tracemalloc.take_snapshot()
         # tracemalloc.stop()
         # top_stats = snapshot.statistics('lineno')
-        pass
 
+
+
+    def test_secrets_mock(self):
+        assert isinstance(self.secrets, Mock)
+
+    def test_storages_mock(self):
+        assert isinstance(microservices.storage.FirestoreStorage, Mock)
 
     def test_foolscap_square_webhook(self, *mocks):
-        main.foolscap_square_webhook(self.request())
+        main.foolscap_square_webhook(self.request)
         main.logger.log_struct.assert_called()
 
 
@@ -87,12 +136,16 @@ class TestSquare(unittest.TestCase):
     def tearDown(self):
         pass
 
-    @patch('logging.getLogger', spec=True)
-    @patch('jsonpath_ng.ext.parse', spec=True)
-    @patch('microservices.storage', spec=microservices.storage)
+    def test_write_square_registration(self):
+        fn = self.test_write_square_registration
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
+
+    @patch('logging.getLogger', autospec=True)
+    @patch('jsonpath_ng.ext.parse', autospec=True)
+    @patch('microservices.storage', autospec=microservices.storage)
     @patch('microservices.square.api.get_membership_orders', mock=MagicMock(microservices.square.api.get_membership_orders, return_value={ 'order_id': MagicMock()}))
-    @async_test
-    async def test_write_square_registration(self, logging, query, gmo, *mocks):
+    async def do_test_write_square_registration(self, logging, query, gmo, *mocks):
         query_data = [{'value': 'aname'} ]
         data = {'customer_id': 'cu'}
 
@@ -106,46 +159,133 @@ class TestSquare(unittest.TestCase):
         self.assertTrue(logs)
 
 
-class TestTito(unittest.TestCase):
+
+class TestTitoMock(TestTito):
     def setUp(self):
-        self.secrets = MagicMock(autospec=microservices.development_config.secrets)
+        super().setUp()
 
     def tearDown(self):
-        pass
+        super().tearDown()
+
+    def test_secrets_mock(self):
+        assert isinstance(self.secrets, Mock)
+
+    def test_requests_fns(self):
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(self.do_test_requests_fns())
+
+    async def do_test_requests_fns(self):
+        patches = []
+        requests_functions = {}
+        mod = 'microservices.tito.api.requests'
+
+        self.patchRequestSetUp()
+
+
+        secrets = self.secrets
+        event = 'foolscap-2021'
+        name = 'releases'
+        fn = 'get'
+        r = await microservices.tito.api.get_tito_release_names(self.secrets, event)
+
+        self.assertRequestCalled(fn)
+        self.assertRequestCalledOnceWith(fn,
+            microservices.tito.api.tito_api_url(event, name),
+            headers = microservices.tito.api.get_base_headers(self.secrets),
+            params = {})
+        self.assertOtherRequestNotCalled(fn)
+        self.requests[fn].reset_mock()
+
+        name = 'registrations'
+        fn = 'post'
+        registration = { 'name': 'ThisIsRegistration', }
+        r = await microservices.tito.api.put_tito_generic(self.secrets, event, name,
+              registration
+              )
+
+        self.assertRequestCalled(fn)
+        self.assertRequestCalledOnceWith(fn,
+            microservices.tito.api.tito_api_url(event, name),
+            headers = microservices.tito.api.get_write_headers(self.secrets),
+            json = registration)
+        self.assertOtherRequestNotCalled(fn)
+        self.requests[fn].reset_mock()
+
+        r = await microservices.tito.api.put_tito_generic(self.secrets, event, name,
+              json = registration,
+              operation = microservices.tito.api.requests.post
+              )
+
+        self.assertRequestCalled(fn)
+        self.assertRequestCalledOnceWith(fn,
+            microservices.tito.api.tito_api_url(event, name),
+            headers = microservices.tito.api.get_write_headers(self.secrets),
+            json = registration)
+        self.assertOtherRequestNotCalled(fn)
+        self.requests[fn].reset_mock()
+
+        fn = 'patch'
+
+        r = await microservices.tito.api.put_tito_generic(self.secrets, event, name,
+              json = registration,
+              operation = microservices.tito.api.requests.patch
+              )
+
+        self.assertRequestCalled(fn)
+        self.assertRequestCalledOnceWith(fn,
+            microservices.tito.api.tito_api_url(event, name),
+            headers = microservices.tito.api.get_write_headers(self.secrets),
+            json = registration)
+
+        self.assertOtherRequestNotCalled(fn)
+        self.requests[fn].reset_mock()
+
+        self.patchRequestTearDown()
+
+
+
 
 class TestTitoRealLogging(TestTito):
     def setUp(self):
-        pass
+        super().setUp()
 
     def tearDown(self):
-        pass
+        super().tearDown()
 
-    @async_test
-    async def test_get_tito_generic_logging():
+    def test_get_tito_generic_logging(self):
+        frame = inspect.currentframe()
+        fname = inspect.getframeinfo(frame).function
+        fn = getattr(self, "do_" + fname)
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
+
+    async def do_test_get_tito_generic_logging(self):
         from microservices import development_config as config
         foo = await microservices.tito.api.get_tito_generic(
             self.secrets, 'webhooks', 'foolscap-2020')
 
 class TestTitoMockLogging(TestTito):
     def setUp(self):
+        super().setUp()
         main.logging_client = MagicMock(name='logging_client')
         main.logger = MagicMock(name='main.logger')
         microservices.tito.api.logger = MagicMock(name='logger')
         microservices.square.api.logger = MagicMock(name='logger')
 
     def tearDown(self):
-        pass
+        super().tearDown()
+
+    def test_get_tito_generic(self):
+        frame = inspect.currentframe()
+        fname = inspect.getframeinfo(frame).function
+        fn = getattr(self, "do_" + fname)
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
 
     @patch('logging.getLogger', spec=True)
     @patch('jsonpath_ng.ext.parse', spec=True)
     @patch('microservices.storage', spec=True)
-    @patch.multiple('microservices.tito.api.requests',
-                post=create_requests_mock('requests.post'),
-                delete=create_requests_mock('requests.delete'),
-                patch=create_requests_mock('requests.patch'),
-                get=create_requests_mock('requests.get'))
-    @async_test
-    async def test_get_tito_generic(self, logging, query, *mocks):
+    async def do_test_get_tito_generic(self, logging, query, *mocks):
         name = 'name'
         event = 'event-2222'
         params = {}
@@ -160,15 +300,14 @@ class TestTitoMockLogging(TestTito):
 
 class SquareNameExtraction(TestTito):
     def setUp(self):
-        self.patches = []
-        self.patches.append(patch('requests.delete', create_requests_mock(requests.delete)))
-        self.patches.append(patch('requests.post', create_requests_mock(requests.delete)))
-        self.patches.append(patch('requests.patch', create_requests_mock(requests.delete)))
+        super().setUp()
 
     def tearDown(self):
+
+
         for p in self.patches:
             p.stop()
-    
+
 
     def test_convert_square_registration(self, *mock):
         note = "Test User\nTest.user,email@dougbeal.com"
@@ -204,45 +343,23 @@ class SquareNameExtraction(TestTito):
             {},
             note,
             0)
-        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Title Test Middle Last Last Last')                        
+        self.assertEqual(update.get('answers', {}).get('badge-name'), 'Title Test Middle Last Last Last')
 
 
-# TODO: requests patch not right        
+# TODO: requests patch not right
 class RegistrationTestTito(TestTito):
     def setUp(self):
         super().setUp()
-        self.patches = []
-
-        self.patches.append(
-            patch.multiple('microservices.tito.api.requests',
-                post=create_requests_mock(requests.post),
-                delete=create_requests_mock(requests.delete),
-                patch=create_requests_mock(requests.patch),
-                get=create_requests_mock(requests.get))
-            )
-
-        self.patches.append(
-            patch.multiple('requests',
-                post=create_requests_mock(requests.post),
-                delete=create_requests_mock(requests.delete),
-                patch=create_requests_mock(requests.patch),
-                get=create_requests_mock(requests.get))
-            )        
-        self.patches.append(patch('microservices.tito.api.requests.delete', create_requests_mock(requests.delete)))
-        self.patches.append(patch('microservices.tito.api.requests.post', create_requests_mock(requests.delete)))
-        self.patches.append(patch('microservices.tito.api.requests.patch', create_requests_mock(requests.delete)))
-
-        self.patches.append(patch('microservices.tito.api.get_tito_generic', autospec=microservices.tito.api.get_tito_generic))
-        self.patches.append(patch('microservices.tito.api.put_tito_generic', autospec=microservices.tito.api.put_tito_generic))                                   
 
     def tearDown(self):
         super().tearDown()
         for p in self.patches:
             p.stop()
+        self.patchRequestTearDown()
 
     def test_sync_event(self):
         loop = asyncio.new_event_loop()
-        return loop.run_until_complete(self.do_test_sync_event())        
+        return loop.run_until_complete(self.do_test_sync_event())
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -295,6 +412,15 @@ class RegistrationTestTito(TestTito):
     async def do_test_sync_event(self, read_registrations, *mock):
         from microservices import development_config as config
         foo = await microservices.tito.api.sync_active(self.secrets)
+
+
+
+    def test_sync_events_from_square(self):
+        frame = inspect.currentframe()
+        fname = inspect.getframeinfo(frame).function
+        fn = getattr(self, 'do_' + fname)
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -417,10 +543,10 @@ class RegistrationTestTito(TestTito):
                 }
             }
                        }}})
-    @async_test
-    async def test_sync_events_from_square(self, *mock):
+
+    async def do_test_sync_events_from_square(self, *mock):
         from microservices import development_config as config
-        foo = await microservices.tito.api.sync_active(self.secrets)    
+        foo = await microservices.tito.api.sync_active(self.secrets)
 
     @patch('microservices.tito.api.read_registrations',
            spec=microservices.tito.api.read_registrations,
@@ -548,7 +674,7 @@ class RegistrationTestTito(TestTito):
                                         "amount": 5000
                                     },
                                     "catalog_object_id": "LEJDSLBKOJ2T6ZJ5FL5JDCPP"
-                                }                                           
+                                }
                             ],
                             "customer": {
                                 "created_at": "2020-02-02T00:41:55.635Z",
@@ -578,12 +704,24 @@ class RegistrationTestTito(TestTito):
            return_value=(['Early Bird'], {'Early Bird': 'EB Release id'}))
     @patch('microservices.tito.api.square_ticket_tito_name',
            return_value='Early Bird')
-    
     async def do_test_sync_events_from_square_two_tickets(self, *mock):
-        from microservices import development_config as config
-        foo = await microservices.tito.api.sync_active(self.secrets)
+        #from microservices import development_config as config
+        r = await microservices.tito.api.sync_active(self.secrets)
+        return r
 
     def test_sync_events_from_square_two_tickets(self, *mock):
+        import tracemalloc
+        tracemalloc.start()
         loop = asyncio.new_event_loop()
-        return loop.run_until_complete(self.do_test_sync_events_from_square_two_tickets())                
-        
+        val = loop.run_until_complete(self.do_test_sync_events_from_square_two_tickets())
+
+        self.assertEqual(len(val), 2)
+        self.assertEqual(type(val), type([]))
+        for v in val:
+            self.assertTrue(v[0].startswith('foolscap-'))
+            self.assertEqual(type(v[1]), type([]))
+
+        self.assertEqual(len(val[1][1]), 2)
+        order_ids = ["8QaWHuQfdabbQIKFU8uxydyeV", "k8nit33rNXBUEr4bkE1rIyMF"]
+        for source in [v['source'] for v in val[1][1]]:
+            self.assertIn( source, order_ids)
