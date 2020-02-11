@@ -65,14 +65,18 @@ def log_request(response):
     if len(response.text) < 10000:
         st["response.text"] = response.text
 
-    if response.status_code == 404 or response.status_code == 422:
+    if not response.status_code == requests.codes.ok:
+        # 404 or response.status_code == 422
         logger.log_struct(st, severity='ERROR')
     else:
         logger.log_struct(st, severity='DEBUG')
 
 
+def tito_api_url(event, name):
+    return  '/'.join([APIBASE, ACCOUNT_SLUG, event, name])
+
 async def get_tito_generic(secrets, name, event, params={}):
-    url = '/'.join([APIBASE, ACCOUNT_SLUG, event, name])
+    url = tito_api_url(event, name)
     headers = get_base_headers(secrets)
     resp = requests.get(url, headers=headers, params=params)
     log_request(resp)
@@ -83,7 +87,7 @@ async def put_tito_generic(secrets, event, name, json=None, operation=None):
     log = logging.getLogger(__name__)
     if not operation:
         operation = requests.post
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/{name}"
+    url = tito_api_url(event, name)
     headers = get_write_headers(secrets)
 
     resp = None
