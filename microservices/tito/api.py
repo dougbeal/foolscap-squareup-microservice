@@ -566,6 +566,7 @@ async def sync_event(secrets, event):
             'sorted': [order['name'] for order in sorted_by_date],
             'registrations': len(sorted_by_date)
         })
+    return (event, order_from_square_tito_add)
 
 
 async def delete_all_webhooks(secrets, event):
