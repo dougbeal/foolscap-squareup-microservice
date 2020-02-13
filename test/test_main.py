@@ -10,43 +10,57 @@ import json
 import requests
 import tracemalloc
 import unittest
+import sys
 
-from jsonpath_ng import jsonpath, Slice, Fields, Root
-from jsonpath_ng.ext import parse
+
+
 
 import main
 import microservices.square.api
 import microservices.tito.api
 import microservices.development_config
+from microservices import create_requests_mock
 
 import google.cloud.logging
+from flask import Request as google_http_trigger_request
+from jsonpath_ng import jsonpath, Slice, Fields, Root
+from jsonpath_ng.ext import parse
 
-from microservices import create_requests_mock
+
 
 
 class TestTito(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        self.secrets = MagicMock(autospec=microservices.development_config.secrets)
+        self.secrets = MagicMock(name='secrets', autospec=microservices.development_config.secrets)
         self.patches = []
         self.requests = {}
         self.patchRequestSetUp()
 
     def tearDown(self):
         super().tearDown()
+        self.patchRequestTearDown()
         for p in self.patches:
             p.stop()
-        self.patchRequestTearDown()
-
 
     def patchRequestSetUp(self):
         mod = 'microservices.tito.api.requests'
-        for fn in [requests.post, requests.delete, requests.patch, requests.get]:
-            assert not isinstance(fn, Mock)
-            p = patch(
-                '.'.join([mod, fn.__name__]), mock=create_requests_mock(fn))
-            self.patches.append(p)
-            self.requests[fn.__name__] = p.start()
+        for fn in [
+                   requests.post,
+                   requests.delete,
+                   requests.patch,
+                   requests.put,
+                   requests.get
+                   ]:
+
+            if not isinstance(fn, Mock):
+                p = patch(
+                    '.'.join([mod, fn.__name__]), mock=create_requests_mock(fn))
+                self.patches.append(p)
+                self.requests[fn.__name__] = p.start()
+            else:
+                fn.mock_reset()
+        print("requests patched", file=sys.stderr)
 
     def patchRequestTearDown(self):
         pass
@@ -56,6 +70,7 @@ class TestTito(unittest.TestCase):
             if name == k:
                 continue
             v.assert_not_called()
+
     def assertRequestCalled(self, name, *args, **kwargs):
         self.requests[name].assert_called_once()
 
@@ -63,21 +78,28 @@ class TestTito(unittest.TestCase):
         self.requests[name].assert_called_once_with(*args, **kwargs)
 
 
-
-#@patch('microservices.storage', autospec=True)
-#@patch('microservices.storage.get_storage', autospec=True)
-#@patch('microservices.storage.FirestoreStorage', name="Storage", autospec=True)
 class TestGoogleCloundFunctions(TestTito):
-
     def setUp(self):
         super().setUp()
         main.logging_client = MagicMock(spec=main.logging_client, name='logging_client')
         main.logger = MagicMock(spec=main.logger, name='logging_client')
-        self.request = MagicMock(name='request')
+        self.request = MagicMock(
+            name='request',
+            autospec=google_http_trigger_request,
+            text='{ "some_json": "foo" }',
+            **{ 'get_json.return_value':{
+                'reference': '___KJ45_TITO_REG_KEY',
+                'event': {
+                    'slug': 'foolscap-2020',
+                    'completed_at': datetime(1000,11,2).isoformat()
+                    },
+                 }})
         self.event = MagicMock(name='event')
         self.context = MagicMock(name='context')
         self.patches.append(
             patch('google.cloud.pubsub_v1.PublisherClient', autospec=True))
+        self.patches.append(
+            patch('google.cloud.firestore_v1.client.Client', autospec=True))
         self.patches.append(
             patch('square.client.Client', autospec=True))
         self.patches.append(
@@ -85,10 +107,66 @@ class TestGoogleCloundFunctions(TestTito):
         self.patches.append(
             patch('yaml.load', autospec=True))
         self.patches.append(
-            patch('microservices.tito.api.storage',
-            autospec=True,
-            return_value=AsyncMock(name='storage')))
+            patch.object(microservices.storage.FirestoreStorage,
+                         'client',
+                         autospec=True))
+        # self.patches.append(
+        #     patch('microservices.tito.api.storage.get_storage',
+        #     autospec=True,
+        #     return_value=AsyncMock(name='storage')))
+
+        self.patches.append(patch('microservices.tito.api.read_registrations',
+           spec=microservices.tito.api.read_registrations,
+           return_value={
+               "foolscap-microservices": {
+                   "tito": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": [{
+                                   'name': 'notfromsquare',
+                                   'completed_at': datetime(1000,10,2).isoformat(),
+                                   'tickets': [
+                                               ]
+                                   },{
+                                       'name': 'fromsquare',
+                                       'source': 'fromsquare',
+                                       'tickets': [
+                                               ]
+                                       }
+
+
+                                                 ]
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                               }
+                               },
+                   "square": {
+                       "events": {
+                           "foolscap-2020": {
+                               "registrations": [{
+                                   'name': 'fromsquare',
+                                   'order_id': 'fromsquare',
+                                   'closed_at': datetime(1000,10,1).isoformat(),
+                                   'line_items': [
+
+                                                  ]
+                                   }
+                                                 ]
+                               },
+                           "foolscap-2021": {
+                               "registrations": []
+                               },
+                        }
+                        },
+                        }
+                        }
+           ))
         #tracemalloc.start()
+        main.secrets = self.secrets
+        for p in self.patches:
+            p.start()
 
     def tearDown(self):
         super().tearDown()
@@ -99,10 +177,10 @@ class TestGoogleCloundFunctions(TestTito):
 
 
     def test_secrets_mock(self):
-        assert isinstance(self.secrets, Mock)
+        self.assertIsInstance(self.secrets, Mock)
 
-    def test_storages_mock(self):
-        assert isinstance(microservices.storage.FirestoreStorage, Mock)
+    def test_firestore_client_mock(self):
+        self.assertIsInstance(google.cloud.firestore_v1.client.Client, Mock)
 
     def test_foolscap_square_webhook(self, *mocks):
         main.foolscap_square_webhook(self.request)
@@ -122,7 +200,12 @@ class TestGoogleCloundFunctions(TestTito):
         main.logger.log_struct.assert_called()
 
     def test_foolscap_firestore_registration_document_changed(self, *mocks):
-        main.foolscap_firestore_registration_document_changed(self.event, self.context)
+        context = MagicMock(name='context',
+                            resource='/documents/foolscap-microservices/square/events/foolscap-2020/registrations/iFW3b8l2DZWQBmzqAtiMGvMF')
+        # self.assertIs(
+        #     type(microservices.tito.api.storage.FirestoreStorage.client),
+        #     unittest.mock.NonCallableMock)
+        main.foolscap_firestore_registration_document_changed(self.event, context)
         main.logger.log_struct.assert_called()
 
 
@@ -137,7 +220,7 @@ class TestSquare(unittest.TestCase):
         pass
 
     def test_write_square_registration(self):
-        fn = self.test_write_square_registration
+        fn = self.do_test_write_square_registration
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(fn())
 
@@ -168,24 +251,20 @@ class TestTitoMock(TestTito):
         super().tearDown()
 
     def test_secrets_mock(self):
-        assert isinstance(self.secrets, Mock)
+        self.assertIsInstance(self.secrets, Mock)
 
     def test_requests_fns(self):
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(self.do_test_requests_fns())
 
     async def do_test_requests_fns(self):
-        patches = []
-        requests_functions = {}
         mod = 'microservices.tito.api.requests'
-
-        self.patchRequestSetUp()
-
 
         secrets = self.secrets
         event = 'foolscap-2021'
         name = 'releases'
         fn = 'get'
+        self.assertTrue(self.requests)
         r = await microservices.tito.api.get_tito_release_names(self.secrets, event)
 
         self.assertRequestCalled(fn)
@@ -239,10 +318,6 @@ class TestTitoMock(TestTito):
 
         self.assertOtherRequestNotCalled(fn)
         self.requests[fn].reset_mock()
-
-        self.patchRequestTearDown()
-
-
 
 
 class TestTitoRealLogging(TestTito):
