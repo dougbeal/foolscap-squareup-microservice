@@ -23,7 +23,7 @@ FOOLSCAP = CONVENTION_YEAR
 FOOLSCAP_MEMBERSHIP = "F20 Membership"
 
 ACCOUNT_SLUG = "foolscap"
-EVENT_SLUG = f"foolscap-{CONVENTION_YEAR}"
+#EVENT_SLUG = f"foolscap-{CONVENTION_YEAR}"
 
 APIHOST = "https://api.tito.io"
 APIVERSION = "v3"
@@ -145,7 +145,7 @@ def document_to_obj(doc_snapshot):
     obj = doc_snapshot.to_dict()
     return obj
 
-async def write_tito_registration(j, event=EVENT_SLUG):
+async def write_tito_registration(j, event):
     if 'event' in j:
         event = j['event']['slug']
     key = j['reference']
@@ -158,8 +158,8 @@ async def write_tito_registration(j, event=EVENT_SLUG):
     else:
         logger.log_struct(j, severity='DEBUG')
 
-async def get_answers(secrets, question_slug):
-    url = f"{APIBASE}/{ACCOUNT_SLUG}/{EVENT_SLUG}/questions/{question_slug}/answers"
+async def get_answers(secrets, question_slug, event):
+    url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/questions/{question_slug}/answers"
     headers = get_base_headers(secrets)
     response = requests.get(url, headers=headers)
     return response.json()
@@ -261,7 +261,7 @@ def convert_square_registration(ticket, answers, notes, num):
             #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
             update.setdefault('answers',{}).update({ 'badge-name': badge_name })
     return update
-    
+
 
 async def update_tito_tickets(secrets, event, registration, square_data, badge_number=None):
     query = parse('$..note')
@@ -580,7 +580,7 @@ async def delete_all_webhooks(secrets, event):
     webhook_ids = [m.value for m in match]
     await asyncio.gather(*[asyncio.create_task(
         put_tito_generic(secrets,
-                         event,                         
+                         event,
                          "webhook_endpoints/" + str(whid),
                          operation=requests.delete
                          ))
