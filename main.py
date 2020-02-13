@@ -77,13 +77,13 @@ def foolscap_tito_webhook(request):
     setup_resources()
 
     request_json = request.get_json(silent=True)
-    request_args = request.args
-    text = request_json['text']
-    event = request_json['event']['slug']
+    # request_args = request.args
+    # text = request.text
+    foolscap_event = request_json['event']['slug']
 
 
 
-    log = asyncio.run(microservices.tito.api.write_tito_registration(request_json))
+    log = asyncio.run(microservices.tito.api.write_tito_registration(request_json, foolscap_event))
     logger.log_struct( {
         'request': request.__dict__,
         'requestjson': request_json,
