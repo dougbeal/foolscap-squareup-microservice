@@ -819,12 +819,13 @@ async def cleanup_duplicates_for_event(secrets, event):
         'deleting': duplicates})
 
     futures = []
-    for reg in duplicates:
-        reference = reg['reference']
-        slug = reg['slug']
-        ticket_slugs = reg['tickets']
-        futures.append(do_void_tickets(secrets, event, ticket_slugs))
-        futures.append(delete_tito_registration(event, reference, slug))
+    for source, registrations in duplicates.items():
+        for reg in registrations:
+            reference = reg['reference']
+            slug = reg['slug']
+            ticket_slugs = reg['tickets']
+            futures.append(do_void_tickets(secrets, event, ticket_slugs))
+            futures.append(delete_tito_registration(event, reference, slug))
     return await asyncio.gather(*futures)
 
 

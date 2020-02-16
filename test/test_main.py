@@ -200,6 +200,33 @@ class TestGoogleCloundFunctions(TestTito):
         main.foolscap_pubsub_topic_bootstrap(self.event, self.context)
         main.logger.log_struct.assert_called()
 
+    @patch('microservices.tito.api.get_tito_generic', return_value={
+        'meta': {},
+        'registrations': [
+                          {
+                              'source': 'fromsquare_001',
+                              'reference': 'Xxxx',
+                              'slug': 'reg_ABCDE1182437',
+                              'tickets': [ 'ti_ABCDER001', 'ti_ABCDER002'],
+                              'created_at':datetime(1000,10,2).isoformat(),
+                              
+                           },
+                          {
+                              'source': 'fromsquare_001',
+                              'reference': 'Xxx2',
+                              'slug': 'reg_ABCDE1182435',
+                              'tickets': [ 'ti_KBCDER001', 'ti_KBCDER002'],
+                              'created_at':datetime(1001,10,2).isoformat(),                              
+                           },
+                          
+                           ]})
+
+    def test_foolscap_pubsub_topic_cleanup_duplicates(self, *mocks):
+        
+        
+        main.foolscap_pubsub_topic_cleanup_duplicates(self.event, self.context)
+        main.logger.log_struct.assert_called()        
+
     def test_foolscap_firestore_registration_document_changed(self, *mocks):
         context = MagicMock(name='context',
                             resource='/documents/foolscap-microservices/square/events/foolscap-2020/registrations/iFW3b8l2DZWQBmzqAtiMGvMF')
