@@ -116,7 +116,8 @@ function deploy_pubsub_function {
 
 
 (deploy_pubsub_function foolscap_pubsub_topic_square_change square.change)&
-(deploy_pubsub_function foolscap_pubsub_topic_bootstrap bootstrap)&  
+(deploy_pubsub_function foolscap_pubsub_topic_bootstrap bootstrap)&
+(deploy_pubsub_function foolscap_pubsub_topic_cleanup_duplicates cleanup.duplicates)&
 
 (deploy_firestore_function foolscap_firestore_registration_document_changed "foolscap-microservices/{service}/events/{event}/registrations/{registration}")&
 
@@ -228,3 +229,14 @@ gcloud pubsub topics publish square.change  --message "message"
 ```
 
 TODO: rename repo to foolscap-microservices
+
+
+# Fixing extra tickets
+```
+pip install csvtool
+grep -e "^Y" "/Volumes/2019 Google Drive/Google Drive/foolscap/documents/tickets-to-void tito-foolscap-foolscap-2021-tickets-for-it-foolscap-org-1172565 copy.csv" | csvtool -c 27 /dev/stdin | sed -n -e 'H;${x;s/\n/,/g;s/^,//;p;}'
+```
+- match Order Name w/Square
+- After 2020-02-07 00:00:00 UTC
+- if no name, use email?
+

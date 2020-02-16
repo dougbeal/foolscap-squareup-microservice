@@ -19,7 +19,7 @@ import main
 import microservices.square.api
 import microservices.tito.api
 import microservices.development_config
-from microservices import create_requests_mock
+from microservices import create_requests_mock, create_requests_mock_settings
 
 import google.cloud.logging
 from flask import Request as google_http_trigger_request
@@ -45,6 +45,7 @@ class TestTito(unittest.TestCase):
 
     def patchRequestSetUp(self):
         mod = 'microservices.tito.api.requests'
+
         for fn in [
                    requests.post,
                    requests.delete,
@@ -54,13 +55,13 @@ class TestTito(unittest.TestCase):
                    ]:
 
             if not isinstance(fn, Mock):
+                name = fn.__name__
                 p = patch(
-                    '.'.join([mod, fn.__name__]), mock=create_requests_mock(fn))
+                    '.'.join([mod, name]), new=create_requests_mock(fn))
                 self.patches.append(p)
-                self.requests[fn.__name__] = p.start()
+                self.requests[name] = p.start()
             else:
                 fn.mock_reset()
-        print("requests patched", file=sys.stderr)
 
     def patchRequestTearDown(self):
         pass
@@ -253,6 +254,29 @@ class TestTitoMock(TestTito):
     def test_secrets_mock(self):
         self.assertIsInstance(self.secrets, Mock)
 
+    def test_requests_paging(self):
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(self.do_test_requests_paging())
+
+    async def do_test_requests_paging(self):
+        mod = 'microservices.tito.api.requests'
+
+        secrets = self.secrets
+        event = 'foolscap-2021'
+        name = 'releases'
+        fn = 'get'
+        name = 'registrations'
+
+        r = await microservices.tito.api.get_tito_generic(self.secrets, name, event)
+
+        self.assertRequestCalled(fn)
+        self.assertRequestCalledOnceWith(fn,
+            microservices.tito.api.tito_api_url(event, name),
+            headers = microservices.tito.api.get_write_headers(self.secrets),
+            params = {})
+        self.assertOtherRequestNotCalled(fn)
+        self.requests[fn].reset_mock()        
+        
     def test_requests_fns(self):
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(self.do_test_requests_fns())

@@ -148,6 +148,15 @@ def foolscap_pubsub_topic_bootstrap(event, context):
     asyncio.run(microservices.api.bootstrap(secrets, square_client))
 
 
+def foolscap_pubsub_topic_cleanup_duplicates(event, context):
+    setup_resources()
+    logger.log_struct( {
+        'event': event,
+        'conntext': context.__dict__ })
+
+    asyncio.run(microservices.tito.api.cleanup_duplicates(secrets))
+
+
 # https://cloud.google.com/functions/docs/calling/cloud-firestore
 # gcloud functions deploy FUNCTION_NAME \
 #  --runtime RUNTIME

@@ -7,13 +7,13 @@ import microservices.tito.api as api
 PRODUCTION = True
 secrets = None
 
-def loop(api_function, level):
+def loop(api_function, level, *args, **kwargs):
     logging.basicConfig(level=level)
     logging.getLogger().setLevel(level)
 
     loop = asyncio.get_event_loop()
     try:
-        return loop.run_until_complete(api_function(secrets=secrets))
+        return loop.run_until_complete(api_function(secrets, *args, **kwargs))
     except:
         if not PRODUCTION:
             import pdb, traceback
@@ -30,30 +30,10 @@ def get_webhooks(level=logging.DEBUG):
     pprint( loop(api.get_webhooks, level))
 
 def sync(level=logging.WARNING):
-    logging.basicConfig(level=level)
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(api.sync_active(secrets))
-
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
-
+    return loop(api.sync_active, level)
 
 def get_registrations(level=logging.WARNING):
-    logging.basicConfig(level=level)
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(api.get_registrations(secrets))
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
+    return loop(api.get_registrations, level)
 
 def dump_documents(level=logging.WARNING):
     logging.basicConfig(level=level)
@@ -68,6 +48,15 @@ def dump_documents(level=logging.WARNING):
             traceback.print_exc()
             pdb.post_mortem()
     return j
+
+def void_tickets(event, references, level=logging.DEBUG):
+    return loop(api.void_tickets, level, event, references)
+
+def print_members(event, level=logging.WARNING):
+    print(loop(api.print_members, level, event))
+
+def cleanup_duplicates(level=logging.INFO):
+    print(loop(api.cleanup_duplicates, level))
 
 def handle_exception(loop, context):
     if not PRODUCTION:

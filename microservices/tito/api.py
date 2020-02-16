@@ -1,4 +1,4 @@
-from pprint import pformat
+from pprint import pprint, pformat
 import asyncio
 import concurrent.futures
 import logging
@@ -53,17 +53,19 @@ def get_write_headers(secrets):
 
 def log_request(response):
     st = {
+            "response.request.url":response.request.url,
             "response.status_code":response.status_code,
             "response.request.method":response.request.method,
-            "response.request.url":response.request.url,
             "response.request.headers":dict(response.request.headers),
             "response.request.body":response.request.body,
-            #"response": { k : v for k, v in response.__dict__.items() if isinstance(v, str)},
-            "response.headers":dict(response.headers)
-
+            "response.headers":dict(response.headers),
+#            "response.json": pformat(response.json(), width=200),
+#            "response": {k : v for k, v in response.__dict__.items() if isinstance(v, str)},
          }
     if len(response.text) < 10000:
         st["response.text"] = response.text
+    else:
+        st["response.size"] = len(response.text)
 
     if not response.status_code == requests.codes.ok:
         # 404 or response.status_code == 422
@@ -81,6 +83,22 @@ async def get_tito_generic(secrets, name, event, params={}):
     resp = requests.get(url, headers=headers, params=params)
     log_request(resp)
     json_result = resp.json()
+    total_pages = json_result['meta']['total_pages']
+    if total_pages > 1 and 'page' not in params:
+
+        # paging, need to request them all
+        futures = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            pages = list(range(2, total_pages+1))
+            futures = pool.map(get_tito_generic,
+                               [secrets for _ in pages],
+                               [name for _ in pages],
+                               [event for _ in pages],
+                               [{**params, **{'page': page}} for page in pages])
+
+        paged_json_results = await asyncio.gather(*futures)
+        for res in paged_json_results:
+            json_result[name].extend(res[name])
     return json_result
 
 async def put_tito_generic(secrets, event, name, json=None, operation=None):
@@ -157,6 +175,17 @@ async def write_tito_registration(j, event):
         logger.log_struct(j)
     else:
         logger.log_struct(j, severity='DEBUG')
+
+async def delete_tito_registration(event, reference, slug):
+    key = reference
+    service = 'tito'
+    col = await storage.get_storage().get_event_collection_reference(service, event)
+    document_reference = col.document(key)
+    if document_reference.get().exists:
+        document_reference.delete()
+        logger.log_struct({
+            'message': f"deleting registration {service} {event} {reference} {slug}"})
+
 
 async def get_answers(secrets, question_slug, event):
     url = f"{APIBASE}/{ACCOUNT_SLUG}/{event}/questions/{question_slug}/answers"
@@ -411,7 +440,8 @@ async def square_ticket_tito_name(secrets, event, name):
         # exclude keywords
         for keyword in name_keywords:
             tito_releases = [t for t in tito_releases if not keyword in t]
-        return tito_releases[0]
+        if tito_releases:
+            return tito_releases[0]
     return None
 
 async def loop_over_events(secrets, function):
@@ -571,6 +601,31 @@ async def sync_event(secrets, event):
         })
     return (event, order_from_square_tito_add)
 
+async def void_tickets(secrets, event, references):
+    slugs = []
+    if not isinstance(references, list) and not isinstance(references, tuple):
+        slugs = references.split(',')
+    else:
+        slugs = references
+
+    if slugs and '/' in slugs[0]:
+        slugs = [url.split('/')[-1] for url in slugs]
+
+    logger.log_struct( { 'secrets': len(secrets),
+                     'event': event,
+                     'references': references,
+                    'treferences': type(references),
+                     })
+    await do_void_tickets(secrets, event, slugs)
+
+async def do_void_tickets(secrets, event, slugs):
+    futures = asyncio.gather(*[asyncio.create_task(
+        put_tito_generic(secrets, event, '/'.join(['tickets', slug, 'void']), operation=requests.post))
+        for slug in slugs if slug])
+    return futures
+
+
+
 
 async def delete_all_webhooks(secrets, event):
     log = logging.getLogger(__name__)
@@ -642,6 +697,135 @@ async def create_update_event_webhook(secrets, event):
             log.info("no trigger changes")
     else:
         return await set_webhooks(secrets, event)
+
+async def print_members(secrets, event):
+    j = await read_registrations()
+    st = storage.get_storage()
+    banq = []
+    deal = []
+    memb = []
+    square_registrations = j[st.col0]['square'][st.col1][event][st.col2]
+    square_by_date = sorted(square_registrations, key=lambda reg: isoparse(reg['closed_at']))
+    for num, reg in enumerate(square_by_date):
+        query = parse("customer..email_address|given_name|family_name")
+        match = query.find(reg)
+        customer = ' '.join([m.value for m in match])
+        query = parse("$..note")
+        match = query.find(reg)
+        note = ' '.join([m.value for m in match])
+        note = ' '.join(note.split('\n'))
+        query = parse("order_id")
+        match = query.find(reg)
+        ref = ' '.join([m.value for m in match])
+        for inum, item in enumerate(reg['line_items']):
+            query = parse("quantity|variation_name|name")
+            match = query.find(item)
+            itemname = ' '.join([m.value for m in match])
+            deets = f"{num}:{inum} {reg['closed_at']} {ref} - {customer} - {itemname} - {note}"
+            if 'Banq' in itemname:
+                banq.append(deets)
+            elif 'Dealer' in itemname:
+                deal.append(deets)
+            else:
+                memb.append(deets)
+    width = 200
+    print(f"dealers {len(deal)}")
+    pprint(deal, width=width)
+    print(f"banquet {len(banq)}")
+    pprint(banq, width=width)
+    print(f"members {len(memb)} square")
+    pprint(memb, width=width)
+    print('------------------------------')
+    total = len(deal)+len(banq)+len(memb)
+    print(f"total {total}")
+    print('==============================')
+    tbanq = []
+    tdeal = []
+    tmemb = []
+    tito_registrations = await get_tito_generic(secrets, 'registrations', event, params={ 'view': 'extended' })
+    tito_by_date = sorted(tito_registrations['registrations'], key=lambda item: isoparse(item['completed_at']))
+
+    for num, reg in enumerate(tito_by_date):
+        query = parse("source|reference")
+        match = query.find(reg)
+        ref = f"{reg.get('source')} {reg.get('reference')}"
+
+        query = parse("tickets..badge_number|badge_number|registration_name|registration_email")
+        match = query.find(reg)
+        customer = ' '.join([m.value for m in match])
+        for inum, item in enumerate(reg['tickets']):
+            query = parse("$..release_title|reference")
+            match = query.find(item)
+            itemname = ' '.join([m.value for m in match])
+            deets = f"{num}:{inum} {reg['created_at']} {ref} - {customer} - {itemname}"
+            deets.replace('\n', '')
+            if 'Banq' in itemname:
+                tbanq.append(deets)
+            elif 'Dealer' in itemname:
+                tdeal.append(deets)
+            else:
+                tmemb.append(deets)
+    print(f"dealers {len(tdeal)}")
+    pprint(tdeal, width=width)
+    print(f"banquet {len(tbanq)}")
+    pprint(tbanq, width=width)
+    print(f"members {len(tmemb)}")
+    pprint(tmemb, width=width)
+    print('------------------------------')
+    total = len(tdeal)+len(tbanq)+len(tmemb)
+    print(f"total {total}")
+
+async def cleanup_duplicates(secrets):
+    return await loop_over_events(secrets, cleanup_duplicates_for_event)
+
+async def cleanup_duplicates_for_event(secrets, event):
+    tito_registrations = await get_tito_generic(secrets, 'registrations', event, params={ 'view': 'extended' })
+    filtered = [reg for reg in tito_registrations['registrations'] if reg.get('source')]
+    tito_by_date = sorted(filtered, key=lambda item: isoparse(item['created_at']))
+
+    # What is not a dupe:
+    # - If there is no 'source', then its a native tito order
+    # - The first(in time) 'source','reference' pair (could have multiple tickets)
+    # What is a dupe
+    # - Anything beyond first source
+
+    # tito: need the ticket slugs to void
+    # firestore: need the reference to delete
+
+    sources = {}
+    duplicates = {}
+    for num, reg in enumerate(tito_by_date):
+        source = reg['source']
+        ref = reg['reference']
+        reg_slug = reg['slug']
+
+        query = parse("$..tickets..slug")
+        match = query.find(reg)
+        ticket_slugs = [m.value for m in match]
+
+        registration = {
+            'reference': ref,
+            'slug': reg_slug,
+            'source': source,
+            'tickets': ticket_slugs
+            }
+        if source not in sources:
+            sources[source] = registration
+        else:
+            duplicates.setdefault(source, []).append(registration)
+
+    logger.log_struct({
+        'keeping': sources,
+        'deleting': duplicates})
+
+    futures = []
+    for reg in duplicates:
+        reference = reg['reference']
+        slug = reg['slug']
+        ticket_slugs = reg['tickets']
+        futures.append(do_void_tickets(secrets, event, ticket_slugs))
+        futures.append(delete_tito_registration(event, reference, slug))
+    return await asyncio.gather(*futures)
 
 
 

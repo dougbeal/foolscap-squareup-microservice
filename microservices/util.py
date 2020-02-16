@@ -1,26 +1,51 @@
 import os
 from functools import wraps
 import json
+import base64
+
 from google.protobuf.json_format import ParseError
 
 def create_requests_mock(op):
+    from unittest.mock import MagicMock
+
+    mock = MagicMock(**create_requests_mock_settings(op))
+    return mock
+
+def create_requests_mock_settings(op):
     from unittest.mock import patch
     from unittest.mock import Mock
     from unittest.mock import MagicMock
     import requests
-
-    response = MagicMock(name='response')
-    response.request = MagicMock(name='request')
-    response.status_code = 200
-    response.json.return_value = {
-        "registrations": {
+    json_results = {
+            "registrations": {
             "slug": "dryrun",
-            "reference": "ti_r3fijdlkf"}
+            "reference": "ti_r3fijdlkf"},
+        "meta": {
+            "total_pages": 1}
         }
+    name = 'requests.op.'+op.__name__
+    content = json.dumps(json_results).encode('ascii')
+    mock_settings = {
+        'autospec': op,
+        'name': name,
+        'return_value': MagicMock(autospec=requests.Response,
+                                  **{
+                                      'name': name + ".response",
+                                      'request': MagicMock(autospec=requests.Request,
+                                                           **{
+                                                              'name': name + ".response.request",
+                                                              }
+                                                              ),
+                                      'status_code': requests.codes.ok,
+                                      'content': content,
+                                      'encoding': 'ascii',
+                                      'json.return_value': json_results,
+                                      'text': json.dumps(json_results),
+                                      },
+                                  )
+    }
 
-    mock = MagicMock(spec=op, return_value=response, name='operation')
-
-    return mock
+    return mock_settings
 
 logger = None
 
