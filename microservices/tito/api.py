@@ -259,15 +259,24 @@ def convert_square_registration(ticket, answers, notes, num):
     update = {}
     if not ticket.get('email') and ticket.get('registration_email'):
         update['email'] = ticket['registration_email']
-    if not ticket.get('first_name') and ticket.get('registration_name'):
-        update['first_name'] = ticket['registration_name'].split()[0]
-    if not ticket.get('last_name') and ticket.get('registration_name'):
-        last_name = ' '.join(ticket['registration_name'].split()[1:])
-        if last_name:
-            update['last_name'] = last_name
+    if not ticket.get('first_name') and ticket.get('registration_name') and not ticket.get('registration_name').isspace():
+        split = ticket['registration_name'].split()
+        if len(split):
+            update['first_name'] = split[0]
+    if not ticket.get('last_name') and ticket.get('registration_name') and not ticket.get('registration_name').isspace():
+        split = ticket['registration_name'].split()
+        if len(split) > 1:
+            last_name = ' '.join(ticket['registration_name'].split()[1:])
+            if last_name:
+                update['last_name'] = last_name
 
     if not 'badge-name' in answers:
-        badge_name = ticket.get('name', ticket.get('registration_name', ''))
+        name = ticket.get('name')
+        if not name or name.isspace():
+            name = ticket.get('registration_name', '')
+            if not name or name.isspace():
+                name = ''
+        badge_name = name
         if notes:
             square_names = []
             if isinstance(notes, list):
@@ -286,7 +295,7 @@ def convert_square_registration(ticket, answers, notes, num):
                 badge_name = ' '.join(raw_badge_name[0:n+1])
 
 
-        if badge_name:
+        if badge_name and not badge_name.isspace():
             #update.setdefault('answers',[]).append({ 'slug': 'badge-name', 'primary_repsonse': badge_name })
             update.setdefault('answers',{}).update({ 'badge-name': badge_name })
     return update

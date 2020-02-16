@@ -31,7 +31,7 @@ if __name__ == '__main__':
                 pdb.post_mortem()
 
     def bootstrap_main(level=logging.DEBUG):
-       loop(bootstrap, level)
+        loop(bootstrap, level)
 
     PRODUCTION = False
     import fire
@@ -62,17 +62,12 @@ if __name__ == '__main__':
         print("TITO_MODE " + microservices.tito.api.TITO_MODE)
 
         from unittest.mock import patch
-        from unittest.mock import Mock
-        from unittest.mock import MagicMock
         from microservices import create_requests_mock as crm
-
-        @patch('requests.delete', crm('requests.delete'))
-        @patch('requests.post', crm('requests.post'))
-        @patch('requests.patch', crm('requests.patch'))
-        @patch.multiple('microservices.tito.api.requests',
-                        post=crm('requests.post'),
-                        delete=crm('requests.delete'),
-                        patch=crm('requests.patch'))
+        import requests
+        mod = 'microservices.tito.api.requests'
+        @patch(mod + '.delete', crm(requests.delete))
+        @patch(mod + '.post', crm(requests.post))
+        @patch(mod + '.patch', crm(requests.patch))
         def mocked_function():
             return fire.Fire()
         mocked_function()

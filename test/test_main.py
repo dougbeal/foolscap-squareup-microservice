@@ -435,6 +435,15 @@ class SquareNameExtraction(TestTito):
             p.stop()
 
 
+    def test_convert_square_space_for_name(self, *mock):
+        note = ""
+        update = microservices.tito.api.convert_square_registration(
+            {'registration_name': ' '},
+            {},
+            note,
+            0)
+        self.assertIs(update.get('answers', {}).get('badge-name'), None)
+        
     def test_convert_square_registration(self, *mock):
         note = "Test User\nTest.user,email@dougbeal.com"
         update = microservices.tito.api.convert_square_registration(
