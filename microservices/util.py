@@ -2,9 +2,24 @@ import os
 from functools import wraps
 import json
 import base64
+import asyncio
 
 from google.protobuf.json_format import ParseError
 
+
+def async_entry_point(entry, level, *args, production=False, **kwargs):
+    logging.basicConfig(level=level)
+    logging.getLogger().setLevel(level)
+
+    loop = asyncio.get_event_loop()
+    try:
+        return loop.run_until_complete(entry(*args, **kwargs))
+    except:
+        if not production:
+            import pdb, traceback
+            traceback.print_exc()
+            pdb.post_mortem()
+            
 def create_requests_mock(op):
     from unittest.mock import MagicMock
 

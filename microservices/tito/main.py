@@ -2,23 +2,16 @@ import asyncio
 import logging
 from pprint import pformat, pprint
 
+import microservices.util as util
 import microservices.tito.api as api
+
+
 
 PRODUCTION = True
 secrets = None
 
 def loop(api_function, level, *args, **kwargs):
-    logging.basicConfig(level=level)
-    logging.getLogger().setLevel(level)
-
-    loop = asyncio.get_event_loop()
-    try:
-        return loop.run_until_complete(api_function(secrets, *args, **kwargs))
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
+    return util.async_entry_point(api_function, level, secrets, *args, production=PRODUCTION, **kwargs)
 
 def create_update_webhook(level=logging.DEBUG):
     return loop(api.create_update_webhook, level)

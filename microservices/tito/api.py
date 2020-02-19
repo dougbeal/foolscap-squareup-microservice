@@ -496,7 +496,7 @@ async def sync_event(secrets, event):
         order_date = order['closed_at']
 
         email = ''
-        name = ''
+        name = '' 
         if cust:
             email = cust.get('email_address', '')
             name = cust.get('given_name', '') + ' ' + cust.get('family_name', '')
@@ -707,82 +707,6 @@ async def create_update_event_webhook(secrets, event):
     else:
         return await set_webhooks(secrets, event)
 
-async def print_members(secrets, event):
-    j = await read_registrations()
-    st = storage.get_storage()
-    banq = []
-    deal = []
-    memb = []
-    square_registrations = j[st.col0]['square'][st.col1][event][st.col2]
-    square_by_date = sorted(square_registrations, key=lambda reg: isoparse(reg['closed_at']))
-    for num, reg in enumerate(square_by_date):
-        query = parse("customer..email_address|given_name|family_name")
-        match = query.find(reg)
-        customer = ' '.join([m.value for m in match])
-        query = parse("$..note")
-        match = query.find(reg)
-        note = ' '.join([m.value for m in match])
-        note = ' '.join(note.split('\n'))
-        query = parse("order_id")
-        match = query.find(reg)
-        ref = ' '.join([m.value for m in match])
-        for inum, item in enumerate(reg['line_items']):
-            query = parse("quantity|variation_name|name")
-            match = query.find(item)
-            itemname = ' '.join([m.value for m in match])
-            deets = f"{num}:{inum} {reg['closed_at']} {ref} - {customer} - {itemname} - {note}"
-            if 'Banq' in itemname:
-                banq.append(deets)
-            elif 'Dealer' in itemname:
-                deal.append(deets)
-            else:
-                memb.append(deets)
-    width = 200
-    print(f"dealers {len(deal)}")
-    pprint(deal, width=width)
-    print(f"banquet {len(banq)}")
-    pprint(banq, width=width)
-    print(f"members {len(memb)} square")
-    pprint(memb, width=width)
-    print('------------------------------')
-    total = len(deal)+len(banq)+len(memb)
-    print(f"total {total}")
-    print('==============================')
-    tbanq = []
-    tdeal = []
-    tmemb = []
-    tito_registrations = await get_tito_generic(secrets, 'registrations', event, params={ 'view': 'extended' })
-    tito_by_date = sorted(tito_registrations['registrations'], key=lambda item: isoparse(item['completed_at']))
-
-    for num, reg in enumerate(tito_by_date):
-        query = parse("source|reference")
-        match = query.find(reg)
-        ref = f"{reg.get('source')} {reg.get('reference')}"
-
-        query = parse("tickets..badge_number|badge_number|registration_name|registration_email")
-        match = query.find(reg)
-        customer = ' '.join([m.value for m in match])
-        for inum, item in enumerate(reg['tickets']):
-            query = parse("$..release_title|reference")
-            match = query.find(item)
-            itemname = ' '.join([m.value for m in match])
-            deets = f"{num}:{inum} {reg['created_at']} {ref} - {customer} - {itemname}"
-            deets.replace('\n', '')
-            if 'Banq' in itemname:
-                tbanq.append(deets)
-            elif 'Dealer' in itemname:
-                tdeal.append(deets)
-            else:
-                tmemb.append(deets)
-    print(f"dealers {len(tdeal)}")
-    pprint(tdeal, width=width)
-    print(f"banquet {len(tbanq)}")
-    pprint(tbanq, width=width)
-    print(f"members {len(tmemb)}")
-    pprint(tmemb, width=width)
-    print('------------------------------')
-    total = len(tdeal)+len(tbanq)+len(tmemb)
-    print(f"total {total}")
 
 async def cleanup_duplicates(secrets):
     return await loop_over_events(secrets, cleanup_duplicates_for_event)

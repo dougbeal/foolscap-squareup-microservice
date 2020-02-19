@@ -155,14 +155,61 @@ async def get_membership_items(secrets, client):
         severity='DEBUG' )
     return membership_item_names, locations
 
-
-# TODO: store last search date
+# store last search date
 # /foolscap-microservices/square/
-async def get_membership_orders(secrets, client, membership_item_ids, locations):
-    log = logging.getLogger(__name__)
+async def get_membership_orders(secrets, client):
     start = await get_last_update_date()
     end = await get_future_date()
+    return await get_membership_orders_by_date(secrets, client, start, end)
 
+async def get_membership_orders_for_foolscap(secrets, client, year):
+    (start, end) = event_year.square_foolscap_date_range(year)
+    orders = await get_membership_orders_by_date(secrets, client, start, end)
+    year_orders = []
+    year_match = {"f" + str(year), "f" + str(year)[2:]}
+    for order_id, order in orders.items():
+        for item in order.get('line_items', []):
+            name = item.get('name')
+            for item_year in {name[0:3].lower(), name[0:5].lower()}:
+                if item_year in year_match:
+                    year_orders.append(order)
+                    break
+                
+    return year_orders
+
+# curl https://connect.squareup.com/v2/orders/search \
+#   -X POST \
+#   -H 'Content-Type: application/json' \
+#   -H 'Square-Version: 2020-01-22' \
+#   -H 'Authorization: Bearer EAAAEPUKWZ-lU9hW8B8jINW5AgwnYpCKTxl0AfNbYQtdbXOW2SpKFbLrxg9M2avd' \
+#   -d '{
+#     "location_ids": [
+#       "979NNC18RM871"
+#     ],
+#     "query": {
+#       "filter": {
+#         "date_time_filter": {
+#           "closed_at": {
+#             "start_at": "2018-01-01T00:00:00Z",
+#             "end_at": "2019-03-25T00:00:00Z"
+#           }
+#         },
+#         "state_filter": {
+#           "states": [
+#             "COMPLETED"
+#           ]
+#         }
+#       },
+#       "sort": {
+#         "sort_field": "CLOSED_AT",
+#         "sort_order": "ASC"
+#       }
+#     },
+#     "return_entries": false
+#   }'
+
+async def get_membership_orders_by_date(secrets, client, start_date, end_date):
+    membership_item_ids, locations = await get_membership_items(secrets, client)
     now = datetime.now()
     body = {
         "return_entries": False,
@@ -172,8 +219,8 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
             "filter": {
                 "date_time_filter": {
                     "closed_at": {
-                        "start_at": start.isoformat(),
-                        "end_at": end.isoformat()
+                        "start_at": start_date.isoformat(),
+                        "end_at": end_date.isoformat()
                     }
                 },
                 "state_filter": {
@@ -188,12 +235,26 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
             }
         }
     }
-    result = client.orders.search_orders(body=body)
 
+    result = client.orders.search_orders(body=body)
     membership_orders = {}
     if result.is_success():
         if 'orders' in result.body:
-            for order in result.body['orders']:
+            orders = result.body['orders']
+
+            # query = parse("$..line_items..name")
+            # match = query.find(orders)
+            # item_names = sorted(set([m.value for m in match]))
+
+
+            logger.log_struct({
+                "body": body,
+                "item locations": list(locations),
+                #"item_names": list(item_names),
+                "result_len": len(result.body.get("orders", [])),
+                },
+                severity='DEBUG' )
+            for order in orders:
                 order_id = order['id']
                 # if order has been refunded, dont' sync to tito
                 if 'refunds' in order:
@@ -205,22 +266,19 @@ async def get_membership_orders(secrets, client, membership_item_ids, locations)
                     membership['line_items'] = membership_items
                     membership['closed_at'] = order['closed_at']
                     for line_item in order['line_items']:
-                        if 'catalog_object_id' in line_item:
-                            catalog_object_id = line_item['catalog_object_id']
-                            if catalog_object_id in membership_item_ids :
+                        if ('name' in line_item and
+                            line_item['name'].lower().startswith('f')):
 
-                                membership_items.append(line_item)
-
-                                if 'tenders' in order:
-                                    tender = order['tenders'][0]
-                                    if 'customer_id' in tender:
-                                        membership['customer_id'] = tender['customer_id']
-                                    else:
-                                        membership['customer_id'] = ""
-
-                                #membership['quantity'] = line_item['quantity']
-                                #membership['item_id'] = catalog_object_id
-                                #membership['item_name'] = membership_item_ids[catalog_object_id]
+                            membership_items.append(line_item)
+                            if 'tenders' in order:
+                                tender = order['tenders'][0]
+                                if 'customer_id' in tender:
+                                    membership['customer_id'] = tender['customer_id']
+                                else:
+                                    membership['customer_id'] = ""
+                            #membership['quantity'] = line_item['quantity']
+                            #membership['item_id'] = catalog_object_id
+                            #membership['item_name'] = membership_item_ids[catalog_object_id]
                     if membership_items:
                         membership_orders[order_id] = membership
 
@@ -283,8 +341,8 @@ async def write_square_registration(batch, order_id, j):
     return log_struct
 
 async def get_registrations(secrets, client):
-    membership_item_ids, locations = await get_membership_items(secrets, client)
-    memberships = await get_membership_orders( secrets, client, membership_item_ids, locations )
+
+    memberships = await get_membership_orders(secrets, client)
 
     tasks = []
 

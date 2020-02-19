@@ -21,6 +21,7 @@ import microservices.tito.api
 import microservices.development_config
 from microservices import create_requests_mock, create_requests_mock_settings
 
+import square.client
 import google.cloud.logging
 from flask import Request as google_http_trigger_request
 from jsonpath_ng import jsonpath, Slice, Fields, Root
@@ -209,23 +210,23 @@ class TestGoogleCloundFunctions(TestTito):
                               'slug': 'reg_ABCDE1182437',
                               'tickets': [ 'ti_ABCDER001', 'ti_ABCDER002'],
                               'created_at':datetime(1000,10,2).isoformat(),
-                              
+
                            },
                           {
                               'source': 'fromsquare_001',
                               'reference': 'Xxx2',
                               'slug': 'reg_ABCDE1182435',
                               'tickets': [ 'ti_KBCDER001', 'ti_KBCDER002'],
-                              'created_at':datetime(1001,10,2).isoformat(),                              
+                              'created_at':datetime(1001,10,2).isoformat(),
                            },
-                          
+
                            ]})
 
     def test_foolscap_pubsub_topic_cleanup_duplicates(self, *mocks):
-        
-        
+
+
         main.foolscap_pubsub_topic_cleanup_duplicates(self.event, self.context)
-        main.logger.log_struct.assert_called()        
+        main.logger.log_struct.assert_called()
 
     def test_foolscap_firestore_registration_document_changed(self, *mocks):
         context = MagicMock(name='context',
@@ -270,6 +271,28 @@ class TestSquare(unittest.TestCase):
         self.assertTrue(logs)
 
 
+    def test_get_membership_orders_by_date(self):
+        fn = self.do_test_get_membership_orders_by_date
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
+
+    async def do_test_get_membership_orders_by_date(self):
+        pass
+
+    def test_get_membership_orders_for_foolscap(self):
+        fn = self.do_test_get_membership_orders_for_foolscap
+        loop = asyncio.new_event_loop()
+        return loop.run_until_complete(fn())
+
+    async def do_test_get_membership_orders_for_foolscap(self):
+        await microservices.square.api.get_membership_orders_for_foolscap(
+            MagicMock(name="secrets", autospec=dict),
+            MagicMock(name="Client", autospec=square.client.Client),
+            2019)
+
+
+
+
 
 class TestTitoMock(TestTito):
     def setUp(self):
@@ -302,8 +325,8 @@ class TestTitoMock(TestTito):
             headers = microservices.tito.api.get_write_headers(self.secrets),
             params = {})
         self.assertOtherRequestNotCalled(fn)
-        self.requests[fn].reset_mock()        
-        
+        self.requests[fn].reset_mock()
+
     def test_requests_fns(self):
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(self.do_test_requests_fns())
@@ -443,7 +466,7 @@ class SquareNameExtraction(TestTito):
             note,
             0)
         self.assertIs(update.get('answers', {}).get('badge-name'), None)
-        
+
     def test_convert_square_registration(self, *mock):
         note = "Test User\nTest.user,email@dougbeal.com"
         update = microservices.tito.api.convert_square_registration(

@@ -1,6 +1,7 @@
-import asyncio
 import logging
+from pprint import pprint
 
+import microservices.util as util
 import microservices.square.api as api
 
 
@@ -11,18 +12,9 @@ secrets = None
 client = None
 
 
-def loop(api_function, level):
-    logging.basicConfig(level=level)
-    logging.getLogger().setLevel(level)
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(api_function(secrets=secrets, client=client))
-    except:
-        if not PRODUCTION:
-            import pdb, traceback
-            traceback.print_exc()
-            pdb.post_mortem()
+def loop(api_function, level, *args, **kwargs):
+    print("logging {logging.getEffectiveLevel()}")
+    return util.async_entry_point(api_function, level, secrets, client, *args, production=PRODUCTION, **kwargs)
 
 def set_webhook(level=logging.WARNING):
     return loop(api.set_webhook, level)
@@ -32,6 +24,11 @@ def get_membership_items(level=logging.WARNING):
 
 def get_registrations(level=logging.WARNING):
     return loop(api.get_registrations, level)
+
+def get_year(year, level=logging.WARNING):
+    result = loop(api.get_membership_orders_for_foolscap, level, year)
+    pprint(result)
+    return result
 
 
 if __name__ == '__main__':
