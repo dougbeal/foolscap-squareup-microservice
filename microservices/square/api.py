@@ -170,11 +170,10 @@ async def get_membership_orders_for_foolscap(secrets, client, year):
     for order_id, order in orders.items():
         for item in order.get('line_items', []):
             name = item.get('name')
-            for item_year in {name[0:3].lower(), name[0:5].lower()}:
-                if item_year in year_match:
-                    year_orders.append(order)
-                    break
-                
+            if (name[0:3].lower() in year_match or
+                name[0:5].lower() in year_match):
+                year_orders.append(order)
+                break
     return year_orders
 
 # curl https://connect.squareup.com/v2/orders/search \

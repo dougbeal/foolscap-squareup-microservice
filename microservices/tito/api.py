@@ -50,6 +50,11 @@ def get_write_headers(secrets):
     base["Authorization"] = f"Token token={create_access_token}"
     return base
 
+def is_request_error(status_code):
+    return not (200 == status_code or # OK 	All is well.
+                201 == status_code or # Created 	Your request has been fulfilled and has resulted in one or more new resources being created.
+                204 == status_code #No Content 	Your request has been fulfilled and that there is no additional content to send in the response payload body. e.g. deleting a resource.
+                )
 
 def log_request(response):
     st = {
@@ -67,8 +72,9 @@ def log_request(response):
     else:
         st["response.size"] = len(response.text)
 
-    if not response.status_code == requests.codes.ok:
+    if is_request_error(response.status_code):
         # 404 or response.status_code == 422
+        st['response.content'] = response.content
         logger.log_struct(st, severity='ERROR')
     else:
         logger.log_struct(st, severity='DEBUG')
@@ -82,6 +88,8 @@ async def get_tito_generic(secrets, name, event, params={}):
     headers = get_base_headers(secrets)
     resp = requests.get(url, headers=headers, params=params)
     log_request(resp)
+    if is_request_error(resp.status_code):
+        return None
     json_result = resp.json()
     total_pages = json_result['meta']['total_pages']
     if total_pages > 1 and 'page' not in params:
