@@ -318,8 +318,8 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
     # membership tickets
     membership_tickets = [m.value for m in match if is_membership_ticket(m.value['release_title'])]
 
+    ret = []
     for num, ticket in enumerate(membership_tickets):
-
         ticket_slug = ticket['slug']
 
         if not 'responses' in ticket:
@@ -334,7 +334,7 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
             update = convert_square_registration(ticket, answers, notes, num)
         # assign badge number if not Bite and not already assigned
         if badge_number:
-            ticket_badge_number = int(badge_number)+num
+            ticket_badge_number = int(badge_number)+int(num)
 
             if (not answers or
                 not answers.get('badge-number') or
@@ -375,13 +375,17 @@ async def update_tito_tickets(secrets, event, registration, square_data, badge_n
                     {'msg': "updating non-membership tickets",
                      'ticket': bite,
                      'update': update})
+            ret.append( {'update':update, 'answers':answers} )
         else:
             logger.log_struct(
                 {'msg': "not updating tickets",
+                 'in-badge-number': badge_number,
+                 'ticket-num': num,
                  'ticket': ticket,
-                 'update': update},
+                 },
                  severity='DEBUG')
-
+            ret.append( {'answers':answers} )
+    return ret
 
 
 
@@ -597,7 +601,7 @@ async def sync_event(secrets, event):
         badge_number = badge_number + membership_count
 
     # wait for everything to complete before sync is done
-    await asyncio.gather(*tasks)
+    updates = await asyncio.gather(*tasks)
 
     logger.log_struct(
         {
@@ -606,6 +610,7 @@ async def sync_event(secrets, event):
             'count.tito': len(tito_registrations),
             'count.tito.added': len(order_from_square_tito_add),
             'sorted': [order['name'] for order in sorted_by_date],
+            'updates': updates,
             'registrations': len(sorted_by_date)
         })
     return (event, order_from_square_tito_add)
