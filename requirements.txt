@@ -15,7 +15,7 @@ PyYAML==5.2
 requests==2.22.0
 six==1.13.0
 squareup==3.20191120.0
-urllib3==1.25.7
+urllib3==1.26.5
 google-api-core==1.16.0
 google-auth==1.10.1
 google-cloud-core==1.1.0
